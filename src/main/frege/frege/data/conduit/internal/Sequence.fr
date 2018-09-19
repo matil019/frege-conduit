@@ -1,0 +1,135 @@
+--- A collection of provisional class-like data types.
+---
+--- The original library uses @MonoFoldable@, @IsSequence@, etc. from the
+--- @mono-traversable@ package. It uses \"type family\" feature which is not
+--- (yet) available in Frege.
+---
+--- Functions which expects such classes are instead inplemented as two
+--- variations: one is @fooE@ that takes a list, and the other is @fooStr@
+--- that takes a String.
+---
+--- This module contains a data types whose members have the same name as the
+--- original type classes so that transition to them when become available is
+--- easier.
+module frege.data.conduit.internal.Sequence where
+
+import frege.Prelude hiding (all, any, elem, fold, notElem, splitAt)
+
+import frege.data.Foldable (Foldable, all, any, elem, foldl', foldlM, notElem, traverse_)
+import frege.data.List ()
+import frege.data.Monoid (Monoid)
+import frege.data.Traversable (Traversable, traverse)
+
+data Seq where
+  dropWhile :: (a -> Bool) -> [a] -> [a]
+  dropWhile = Prelude.dropWhile
+  filter :: (a -> Bool) -> [a] -> [a]
+  filter = Prelude.filter
+  filterM :: Monad m => (a -> m Bool) -> [a] -> m [a]
+  filterM = Prelude.filterM
+  fromNullable :: Foldable f => f a -> Maybe (f a)
+  fromNullable xs
+    | onull xs  = Nothing
+    | otherwise = Just xs
+  headMay :: ListView f => f a -> Maybe a
+  headMay xs = fst <$> uncons xs
+  last :: [a] -> a
+  last = Prelude.last
+  lengthIndex :: Foldable f => f a -> Int
+  lengthIndex = olength
+  oall :: Foldable f => (a -> Bool) -> f a -> Bool
+  oall = all
+  oany :: Foldable f => (a -> Bool) -> f a -> Bool
+  oany = any
+  oelem :: (Foldable f, Eq a) => a -> f a -> Bool
+  oelem = elem
+  ofoldMap :: (Monoid m, Foldable f) => (a -> m) -> f a -> m
+  ofoldMap = foldMap
+  ofoldl' :: Foldable f => (a -> b -> a) -> a -> f b -> a
+  ofoldl' = foldl'
+  ofoldl1' :: Foldable f => (a -> a -> a) -> f a -> a
+  ofoldl1' f = Foldable.foldl1 (\(!a) (!b) -> f a b)
+  ofoldlM :: (Monad m, Foldable f) => (a -> b -> m a) -> a -> f b -> m a
+  ofoldlM = foldlM
+  olength :: Foldable f => f a -> Int
+  olength = foldl' (\x _ -> x + 1) 0
+  omap :: Functor f => (a -> a) -> f a -> f a
+  omap = fmap
+  omapM :: (Applicative m, Traversable f) => (a -> m b) -> f a -> m (f b)
+  omapM = traverse
+  omapM_ :: (Applicative m, Foldable f) => (a -> m ()) -> f a -> m ()
+  omapM_ = traverse_
+  onotElem :: (Foldable f, Eq a) => a -> f a -> Bool
+  onotElem = notElem
+  onull :: Foldable f => f a -> Bool
+  onull = all (\_ -> False)
+  snoc :: (Applicative f, ListSemigroup f) => f a -> a -> f a
+  snoc xs x = xs ++ pure x
+  span :: (a -> Bool) -> [a] -> ([a], [a])
+  span = Prelude.span
+  splitAt :: ListView f => Int -> f a -> (f a, f a)
+  splitAt = Prelude.splitAt
+  tail :: ListView f => f a -> f a
+  tail = Prelude.tail
+  uncons :: ListView f => f a -> Maybe (a, f a)
+  uncons = Prelude.uncons
+
+-- can (and should) be optimized so no Lists are constructed along the way
+data StrSeq where
+  dropWhile :: (Char -> Bool) -> String -> String
+  dropWhile f s =
+    maybe "" (strtail s) $
+    List.find (not . f . s.charAt) [0..(s.length - 1)]
+  filter :: (Char -> Bool) -> String -> String
+  filter f = packed . Prelude.filter f . toList
+  filterM :: Monad m => (Char -> m Bool) -> String -> m String
+  filterM f s = (packed <$>) $ Prelude.filterM f $ toList s
+  fromNullable :: String -> Maybe String
+  fromNullable xs
+    | onull xs  = Nothing
+    | otherwise = Just xs
+  headMay :: String -> Maybe Char
+  headMay xs = fst <$> uncons xs
+  last :: String -> Char
+  last s = s.charAt (s.length - 1)
+  lengthIndex :: String -> Int
+  lengthIndex = olength
+  oall :: (Char -> Bool) -> String -> Bool
+  oall f = all f . toList
+  oany :: (Char -> Bool) -> String -> Bool
+  oany f = any f . toList
+  oelem :: Char -> String -> Bool
+  oelem c = elem c . toList
+  ofoldMap :: Monoid m => (Char -> m) -> String -> m
+  ofoldMap f = foldMap f . toList
+  ofoldl' :: (a -> Char -> a) -> a -> String -> a
+  ofoldl' f z = Prelude.fold f z . toList
+  ofoldlM :: Monad m => (a -> Char -> m a) -> a -> String -> m a
+  ofoldlM f z = foldlM f z . toList
+  olength :: String -> Int
+  olength s = s.length
+  omap :: (Char -> Char) -> String -> String
+  omap f = packed . map f . toList
+  omapM :: Applicative m => (Char -> m Char) -> String -> m String
+  omapM f s = (packed <$>) $ traverse f $ toList s
+  omapM_ :: Applicative m => (Char -> m ()) -> String -> m ()
+  omapM_ f = traverse_ f . toList
+  onotElem :: Char -> String -> Bool
+  onotElem c = notElem c . toList
+  onull :: String -> Bool
+  onull = null
+  snoc :: String -> Char -> String
+  snoc xs x = xs ++ ctos x
+  span :: (Char -> Bool) -> String -> (String, String)
+  span f s = let (xl, yl) = Prelude.span f $ toList s in (packed xl, packed yl)
+  splitAt :: Int -> String -> (String, String)
+  splitAt i s
+    | i <= 0        = ("", s)
+    | i >= s.length = (s, "")
+    | otherwise     = (substr s 0 i, strtail s i)
+  tail :: String -> String
+  tail s = strtail s 1
+  uncons :: String -> Maybe (Char, String)
+  uncons s
+    | null s = Nothing
+    | otherwise = Just (head s, strtail s 1)

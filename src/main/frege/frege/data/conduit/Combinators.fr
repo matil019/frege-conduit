@@ -1,0 +1,1126 @@
+--- Since some type classes don't exist in Frege yet, some functions have
+--- different types as follows:
+---
+--- * For chunked operations (@fooE@), specialized functions are provided.
+---   Some expects lists only, some can accept general @Foldable@s.
+---   Please consult type signature for each function.
+--- * Also, string variants are added (@fooStr@ for each @fooE@)
+module frege.data.conduit.Combinators where
+
+import frege.Prelude hiding
+  ( all
+  , and
+  , any
+  , concat
+  , concatMap
+  , drop, dropWhile
+  , elem
+  , enumFromTo
+  , filter, filterM
+  , fold, foldl, foldl1, foldM
+  , head
+  , iterate
+  , last
+  , length
+  , map, mapM, mapM_
+  , maximum, minimum
+  , notElem
+  , null
+  , or
+  , product
+  , repeat
+  , replicate, replicateM
+  , scanl
+  , sum
+  , take, takeWhile)
+
+import frege.control.monad.trans.MonadTrans (lift)
+import frege.data.Conduit
+  ( .|
+  , ConduitT
+  , await
+  , awaitForever
+  , leftover
+  , yield
+  )
+import frege.data.conduit.internal.Sequence (Seq, StrSeq)
+import frege.data.Foldable (Foldable(), traverse_)
+import frege.data.List ()
+import frege.data.Monoid (Monoid, mappend)
+import frege.data.Traversable (Traversable())
+import frege.java.Util (ArrayList)
+
+--- Yield each of the values contained by the given @Foldable@.
+yieldMany :: (Monad m, Foldable f) => f a -> ConduitT i a m ()
+yieldMany = Seq.ofoldMap yield
+
+--- Yield each of the characters contained by the given @String@.
+yieldManyStr :: Monad m => String -> ConduitT i Char m ()
+yieldManyStr = StrSeq.ofoldMap yield
+
+--- Generate a producer from a seed value.
+unfold :: Monad m => (b -> Maybe (a, b)) -> b -> ConduitT i a m ()
+unfold f =
+    go
+  where
+    go seed =
+        case f seed of
+            Just (a, seed') -> yield a >> go seed'
+            Nothing -> pure ()
+
+--- Enumerate from a value to a final value, inclusive, via 'succ'.
+---
+--- This is generally more efficient than using @Prelude@\'s @enumFromTo@ and
+--- combining with @sourceList@ since this avoids any intermediate data
+--- structures.
+enumFromTo :: (Monad m, Enum a, Ord a) => a -> a -> ConduitT i a m ()
+enumFromTo x0 y =
+    loop x0
+  where
+    loop x
+        | x > y = return ()
+        | otherwise = yield x >> loop (succ x)
+
+--- Produces an infinite stream of repeated applications of f to x.
+iterate :: Monad m => (a -> a) -> a -> ConduitT i a m ()
+iterate f =
+    go
+  where
+    go a = yield a >> go (f a)
+
+--- Produce an infinite stream consisting entirely of the given value.
+repeat :: Monad m => a -> ConduitT i a m ()
+repeat = iterate id
+
+--- Produce a finite stream consisting of n copies of the given value.
+replicate :: Monad m => Int -> a -> ConduitT i a m ()
+replicate cnt0 a =
+    loop cnt0
+  where
+    loop i
+        | i <= 0 = pure ()
+        | otherwise = yield a >> loop (i - 1)
+
+--- Repeatedly run the given action and yield all values it produces.
+repeatM :: Monad m => m a -> ConduitT i a m ()
+repeatM m = forever $ lift m >>= yield
+
+--- Repeatedly run the given action and yield all values it produces, until
+--- the provided predicate returns @False@.
+repeatWhileM :: Monad m => m a -> (a -> Bool) -> ConduitT i a m ()
+repeatWhileM m f =
+    loop
+  where
+    loop = do
+        x <- lift m
+        when (f x) $ yield x >> loop
+
+--- Perform the given action n times, yielding each result.
+replicateM :: Monad m => Int -> m a -> ConduitT i a m ()
+replicateM cnt0 ma =
+    loop cnt0
+  where
+    loop i
+        | i <= 0 = return ()
+        | otherwise = lift ma >>= yield >> loop (i - 1)
+
+
+--- Ignore a certain number of values in the stream.
+---
+--- Note: since this function doesn't produce anything, you probably want to
+--- use it with ('>>') instead of directly plugging it into a pipeline:
+---
+--- > >>> runConduit $ yieldMany [1..5] .| drop 2 .| sinkList
+--- > []
+--- > >>> runConduit $ yieldMany [1..5] .| (drop 2 >> sinkList)
+--- > [3,4,5]
+drop :: Monad m => Int -> ConduitT a o m()
+drop =
+    loop
+  where
+    loop i | i <= 0 = return ()
+    loop count = await >>= maybe (return ()) (\_ -> loop (count - 1))
+
+--- Drop a certain number of elements from a chunked stream.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropE :: (Monad m, Foldable f, ListView f) => Int -> ConduitT (f a) o m ()
+dropE =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (Seq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = Seq.splitAt i sq
+        i' = i - fromIntegral (Seq.olength x)
+
+--- Drop a certain number of Chars from a String stream.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropStr :: Monad m => Int -> ConduitT String o m ()
+dropStr =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (StrSeq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = StrSeq.splitAt i sq
+        i' = i - fromIntegral (StrSeq.olength x)
+
+--- Drop all values which match the given predicate.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropWhile :: Monad m => (a -> Bool) -> ConduitT a o m ()
+dropWhile f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+    go x = if f x then loop else leftover x
+
+--- Drop all elements in the chunked stream which match the given predicate.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropWhileE :: (Monad m) => (a -> Bool) -> ConduitT [a] o m ()
+dropWhileE f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq =
+        if Seq.onull x then loop else leftover x
+      where
+        x = Seq.dropWhile f sq
+
+--- Drop all elements in the String stream which match the given predicate.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropWhileStr :: Monad m => (Char -> Bool) -> ConduitT String o m ()
+dropWhileStr f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq =
+        if StrSeq.onull x then loop else leftover x
+      where
+        x = StrSeq.dropWhile f sq
+
+--- Monoidally combine all values in the stream.
+---
+--- Porting note: this is NOT Conduit.List.fold. It is 'foldl'.
+fold :: (Monad m, Monoid a) => ConduitT a o m a
+fold = foldMap id
+
+--- Monoidally combine all elements in the chunked stream.
+foldE :: (Monad m, Foldable f, Monoid a) => ConduitT (f a) o m a
+foldE = foldl (\accum mono -> accum `mappend` Seq.ofoldMap id mono) mempty
+
+--- A strict left fold.
+---
+--- Porting note: corresponds to Conduit.List.fold
+foldl :: Monad m => (a -> b -> a) -> a -> ConduitT b o m a
+foldl f =
+    loop
+  where
+    loop !accum = await >>= maybe (return accum) (loop . f accum)
+
+--- A strict left fold with no starting value.  Returns 'Nothing'
+--- when the stream is empty.
+foldl1 :: Monad m => (a -> a -> a) -> ConduitT a o m (Maybe a)
+foldl1 f =
+    await >>= maybe (return Nothing) loop
+  where
+    loop !prev = await >>= maybe (return $ Just prev) (loop . f prev)
+
+--- A strict left fold on a chunked stream.
+foldlE :: (Monad m, Foldable f) => (a -> b -> a) -> a -> ConduitT (f b) o m a
+foldlE f x = foldl (Seq.ofoldl' f) x
+
+--- A strict left fold on a String stream.
+foldlStr :: Monad m => (a -> Char -> a) -> a -> ConduitT String o m a
+foldlStr f x = foldl (StrSeq.ofoldl' f) x
+
+--- Apply the provided mapping function and monoidal combine all values.
+foldMap :: (Monad m, Monoid b) => (a -> b) -> ConduitT a o m b
+foldMap f = let combiner accum = mappend accum . f in foldl combiner mempty
+
+--- Apply the provided mapping function and monoidal combine all elements of the chunked stream.
+foldMapE :: (Monad m, Foldable f, Monoid w) => (a -> w) -> ConduitT (f a) o m w
+foldMapE f = foldMap (Seq.ofoldMap f)
+
+--- Apply the provided mapping function and monoidal combine all elements of the String stream.
+foldMapStr :: (Monad m, Monoid w) => (Char -> w) -> ConduitT String o m w
+foldMapStr f = foldMap (StrSeq.ofoldMap f)
+
+--- Check that all values in the stream return True.
+---
+--- Subject to shortcut logic: at the first False, consumption of the stream
+--- will stop.
+all :: Monad m => (a -> Bool) -> ConduitT a o m Bool
+all f = fmap isNothing $ find (not . f)
+
+--- Check that all elements in the chunked stream return True.
+---
+--- Subject to shortcut logic: at the first False, consumption of the stream
+--- will stop.
+allE :: (Monad m, Foldable f) => (a -> Bool) -> ConduitT (f a) o m Bool
+allE f = all (Seq.oall f)
+
+--- Check that all elements in the chunked stream return True.
+---
+--- Subject to shortcut logic: at the first False, consumption of the stream
+--- will stop.
+allStr :: Monad m => (Char -> Bool) -> ConduitT String o m Bool
+allStr f = all (StrSeq.oall f)
+
+--- Check that at least one value in the stream returns True.
+---
+--- Subject to shortcut logic: at the first True, consumption of the stream
+--- will stop.
+any :: Monad m => (a -> Bool) -> ConduitT a o m Bool
+any = fmap isJust . find
+
+--- Check that at least one element in the chunked stream returns True.
+---
+--- Subject to shortcut logic: at the first True, consumption of the stream
+--- will stop.
+anyE :: (Monad m, Foldable f) => (a -> Bool) -> ConduitT (f a) o m Bool
+anyE f = any (Seq.oany f)
+
+--- Check that at least one element in the String stream returns True.
+---
+--- Subject to shortcut logic: at the first True, consumption of the stream
+--- will stop.
+anyStr :: Monad m => (Char -> Bool) -> ConduitT String o m Bool
+anyStr f = any (StrSeq.oany f)
+
+--- Are all values in the stream True?
+---
+--- Consumption stops once the first False is encountered.
+and :: Monad m => ConduitT Bool o m Bool
+and = all id
+
+--- Are all elements in the chunked stream True?
+---
+--- Consumption stops once the first False is encountered.
+andE :: (Monad m, Foldable f) => ConduitT (f Bool) o m Bool
+andE = allE id
+
+--- Are any values in the stream True?
+---
+--- Consumption stops once the first True is encountered.
+or :: Monad m => ConduitT Bool o m Bool
+or = any id
+
+--- Are any elements in the chunked stream True?
+---
+--- Consumption stops once the first True is encountered.
+orE :: (Monad m, Foldable f) => ConduitT (f Bool) o m Bool
+orE = anyE id
+
+--- 'Alt'ernatively combine all values in the stream (with 'Plus').
+asum :: (Monad m, Plus f) => ConduitT (f a) o m (f a)
+asum = foldl (<|>) pzero
+
+--- Are any values in the stream equal to the given value?
+---
+--- Stops consuming as soon as a match is found.
+elem :: (Monad m, Eq a) => a -> ConduitT a o m Bool
+elem x = any (== x)
+
+--- Are any elements in the chunked stream equal to the given element?
+---
+--- Stops consuming as soon as a match is found.
+elemE :: (Monad m, Foldable f, Eq a) => a -> ConduitT (f a) o m Bool
+elemE f = any (Seq.oelem f)
+
+--- Are any Chars in the String stream equal to the given Char?
+---
+--- Stops consuming as soon as a match is found.
+elemStr :: Monad m => Char -> ConduitT String o m Bool
+elemStr f = any (StrSeq.oelem f)
+
+--- Are no values in the stream equal to the given value?
+---
+--- Stops consuming as soon as a match is found.
+notElem :: (Monad m, Eq a) => a -> ConduitT a o m Bool
+notElem x = all (/= x)
+
+--- Are no elements in the chunked stream equal to the given element?
+---
+--- Stops consuming as soon as a match is found.
+notElemE :: (Monad m, Foldable f, Eq a) => a -> ConduitT (f a) o m Bool
+notElemE x = all (Seq.onotElem x)
+
+--- Are no elements in the String stream equal to the given Char?
+---
+--- Stops consuming as soon as a match is found.
+notElemStr :: Monad m => Char -> ConduitT String o m Bool
+notElemStr x = all (StrSeq.onotElem x)
+
+--- Consume all values from the stream and return as a list. Note that this
+--- will pull all values into memory.
+---
+--- Try @sinkJList@ if this function causes StackOverflow (unconfirmed).
+---
+--- Porting note: corresponds to Conduit.List.consume
+sinkList :: Monad m => ConduitT a o m [a]
+sinkList =
+    loop id
+  where
+    loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
+
+--- Sink incoming values into @java.util.ArrayList@.
+---
+--- Note that using this function is more memory efficient than @sinkList@ and
+--- then converting to a @java.util.ArrayList@, as it avoids intermediate list
+--- constructors.
+sinkArrayList :: ConduitT a o (ST s) (Mutable s (ArrayList a))
+sinkArrayList = go
+  where
+  go = do
+    buf <- lift $ ArrayList.new ()
+    let loop = await >>= maybe (pure ()) (\x -> lift (buf.add x) >> loop)
+    loop
+    pure buf
+
+--- Consume and discard all remaining values in the stream.
+sinkNull :: Monad m => ConduitT a o m ()
+sinkNull = awaitForever $ \_ -> return ()
+
+--- Same as @await@, but discards any leading 'onull' values.
+awaitNonNull :: (Monad m, Foldable f) => ConduitT (f a) o m (Maybe (f a))
+awaitNonNull =
+    go
+  where
+    go = await >>= maybe (return Nothing) go'
+
+    go' = maybe go (return . Just) . Seq.fromNullable
+
+--- Same as @await@, but discards any leading empty Strings.
+awaitNonNullStr :: (Monad m) => ConduitT String o m (Maybe String)
+awaitNonNullStr =
+    go
+  where
+    go = await >>= maybe (return Nothing) go'
+
+    go' = maybe go (return . Just) . StrSeq.fromNullable
+
+--- Take a single value from the stream, if available.
+---
+--- Equivalent to 'await'.
+head :: Monad m => ConduitT a o m (Maybe a)
+head = await
+
+--- Same as 'head', but returns a default value if none are available from the stream.
+headDef :: Monad m => a -> ConduitT a o m a
+headDef a = fromMaybe a <$> head
+
+--- Get the next element in the chunked stream.
+headE :: (Monad m, Foldable f, ListView f) => ConduitT (f a) o m (Maybe a)
+headE =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case Seq.uncons x of
+            Nothing -> loop
+            Just (y, z) -> do
+                unless (Seq.onull z) $ leftover z
+                return $ Just y
+
+--- Get the next Char in the String stream.
+headStr :: Monad m => ConduitT String o m (Maybe Char)
+headStr =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case StrSeq.uncons x of
+            Nothing -> loop
+            Just (y, z) -> do
+                unless (StrSeq.onull z) $ leftover z
+                return $ Just y
+
+--- View the next value in the stream without consuming it.
+peek :: Monad m => ConduitT a o m (Maybe a)
+peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
+
+--- View the next element in the chunked stream without consuming it.
+peekE :: (Monad m, ListView f) => ConduitT (f a) o m (Maybe a)
+peekE =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case Seq.headMay x of
+            Nothing -> loop
+            Just y -> do
+                leftover x
+                return $ Just y
+
+--- View the next Char in the String stream without consuming it.
+peekStr :: Monad m => ConduitT String o m (Maybe Char)
+peekStr =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case StrSeq.headMay x of
+            Nothing -> loop
+            Just y -> do
+                leftover x
+                return $ Just y
+
+--- Retrieve the last value in the stream, if present.
+last :: Monad m => ConduitT a o m (Maybe a)
+last =
+    await >>= maybe (return Nothing) loop
+  where
+    loop prev = await >>= maybe (return $ Just prev) loop
+
+--- Same as 'last', but returns a default value if none are available from the stream.
+lastDef :: Monad m => a -> ConduitT a o m a
+lastDef a = fromMaybe a <$> last
+
+-- javac compilation error for some reason
+-- --- | Retrieve the last element in the chunked stream, if present.
+-- lastE :: (Monad m) => ConduitT [a] o m (Maybe a)
+-- lastE =
+--     awaitNonNull >>= maybe (return Nothing) (loop . Seq.last)
+--   where
+--     loop prev = awaitNonNull >>= maybe (return $ Just prev) (loop . Seq.last)
+
+--- Retrieve the last Char in the String stream, if present.
+lastStr :: Monad m => ConduitT String o m (Maybe Char)
+lastStr = do
+    awaitNonNullStr >>= maybe (return Nothing) (loop . StrSeq.last)
+  where
+    loop prev = awaitNonNullStr >>= maybe (return $ Just prev) (loop . StrSeq.last)
+
+--- Count how many values are in the stream.
+length :: (Monad m, Num len) => ConduitT a o m len
+length = foldl (\x _ -> x + 1) 0
+
+--- Count how many elements are in the chunked stream.
+lengthE :: (Monad m, Num len, Foldable f) => ConduitT (f a) o m len
+lengthE = foldl (\x y -> x + fromIntegral (Seq.olength y)) 0
+
+--- Count how many Chars are in the String stream.
+lengthStr :: (Monad m, Num len) => ConduitT String o m len
+lengthStr = foldl (\x y -> x + fromIntegral (StrSeq.olength y)) 0
+
+--- Count how many values in the stream pass the given predicate.
+lengthIf :: (Monad m, Num len) => (a -> Bool) -> ConduitT a o m len
+lengthIf f = foldl (\cnt a -> if f a then (cnt + 1) else cnt) 0
+
+--- Count how many elements in the chunked stream pass the given predicate.
+lengthIfE :: (Monad m, Num len, Foldable f) => (a -> Bool) -> ConduitT (f a) o m len
+lengthIfE f = foldlE (\cnt a -> if f a then (cnt + 1) else cnt) 0
+
+--- Count how many Chars in the String stream pass the given predicate.
+lengthIfStr :: (Monad m, Num len) => (Char -> Bool) -> ConduitT String o m len
+lengthIfStr f = foldlStr (\cnt a -> if f a then (cnt + 1) else cnt) 0
+
+--- A strict left fold on a chunked stream, with no starting value.
+--- Returns 'Nothing' when the stream is empty.
+private foldl1E :: (Monad m, Foldable f) => (a -> a -> a) -> ConduitT (f a) o m (Maybe a)
+private foldl1E f = foldl (foldMaybeNull f) Nothing
+
+--- Helper for foldl1E
+private foldMaybeNull :: Foldable f => (e -> e -> e) -> Maybe e -> f e -> Maybe e
+private foldMaybeNull f macc mono =
+    case (macc, Seq.fromNullable mono) of
+        (Just acc, Just nn) -> Just $ Seq.ofoldl' f acc nn
+        (Nothing, Just nn) -> Just $ Seq.ofoldl1' f nn
+        _ -> macc
+
+--- Get the largest value in the stream, if present.
+maximum :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
+maximum = foldl1 max
+
+--- Get the largest element in the chunked stream, if present.
+maximumE :: (Monad m, Foldable f, Ord a) => ConduitT (f a) o m (Maybe a)
+maximumE = foldl1E max
+
+--- Get the smallest value in the stream, if present.
+minimum :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
+minimum = foldl1 min
+
+--- Get the smallest element in the chunked stream, if present.
+minimumE :: (Monad m, Foldable f, Ord a) => ConduitT (f a) o m (Maybe a)
+minimumE = foldl1E min
+
+--- True if there are no values in the stream.
+---
+--- This function does not modify the stream.
+null :: Monad m => ConduitT a o m Bool
+null = (maybe True (\_ -> False)) `fmap` peek
+
+--- True if there are no elements in the chunked stream.
+---
+--- This function may remove empty leading chunks from the stream, but otherwise
+--- will not modify it.
+nullE :: (Monad m, Foldable f) => ConduitT (f a) o m Bool
+nullE =
+    go
+  where
+    go = await >>= maybe (return True) go'
+    go' x = if Seq.onull x then go else leftover x >> return False
+
+--- Get the sum of all values in the stream.
+sum :: (Monad m, Num a) => ConduitT a o m a
+sum = foldl (+) 0
+
+--- Get the sum of all elements in the chunked stream.
+sumE :: (Monad m, Foldable f, Num a) => ConduitT (f a) o m a
+sumE = foldlE (+) 0
+
+--- Get the product of all values in the stream.
+product :: (Monad m, Num a) => ConduitT a o m a
+product = foldl (*) 1
+
+--- Get the product of all elements in the chunked stream.
+productE :: (Monad m, Foldable f, Num a) => ConduitT (f a) o m a
+productE = foldlE (*) 1
+
+--- Find the first matching value.
+find :: Monad m => (a -> Bool) -> ConduitT a o m (Maybe a)
+find f =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x = if f x then return (Just x) else loop
+
+--- Apply the action to all values in the stream.
+---
+--- Note: if you want to /pass/ the values instead of /consuming/ them, use
+--- 'iterM' instead.
+mapM_ :: Monad m => (a -> m ()) -> ConduitT a o m ()
+mapM_ f = awaitForever $ lift . f
+
+--- Apply the action to all elements in the chunked stream.
+---
+--- Note: the same caveat as with 'mapM_' applies. If you don't want to
+--- consume the values, you can use 'iterM':
+---
+--- > iterM (omapM_ f)
+mapM_E :: (Monad m, Foldable f) => (a -> m ()) -> ConduitT (f a) o m ()
+mapM_E f = mapM_ (Seq.omapM_ f)
+
+--- Apply the action to all Chars in the String stream.
+---
+--- Note: the same caveat as with 'mapM_' applies. If you don't want to
+--- consume the values, you can use 'iterM':
+---
+--- > iterM (omapM_ f)
+mapM_Str :: Monad m => (Char -> m ()) -> ConduitT String o m ()
+mapM_Str f = mapM_ (StrSeq.omapM_ f)
+
+--- A monadic strict left fold.
+foldM :: Monad m => (a -> b -> m a) -> a -> ConduitT b o m a
+foldM f =
+    loop
+  where
+    loop accum = do
+        await >>= maybe (return accum) go
+      where
+        go a = do
+            !accum' <- lift $ f accum a
+            loop accum'
+
+--- A monadic strict left fold on a chunked stream.
+foldME :: (Monad m, Foldable f) => (a -> b -> m a) -> a -> ConduitT (f b) o m a
+foldME f = foldM (Seq.ofoldlM f)
+
+--- A monadic strict left fold on a String stream.
+foldMStr :: Monad m => (a -> Char -> m a) -> a -> ConduitT String o m a
+foldMStr f = foldM (StrSeq.ofoldlM f)
+
+--- Apply the provided monadic mapping function and monoidal combine all values.
+foldMapM :: (Monad m, Monoid w) => (a -> m w) -> ConduitT a o m w
+foldMapM f = let combiner accum = liftM (mappend accum) . f in foldM combiner mempty
+
+--- Apply the provided monadic mapping function and monoidal combine all
+--- elements in the chunked stream.
+foldMapME :: (Monad m, Foldable f, Monoid w) => (a -> m w) -> ConduitT (f a) o m w
+foldMapME f = foldM (Seq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
+
+--- Apply the provided monadic mapping function and monoidal combine all
+--- Chars in the String stream.
+foldMapMStr :: (Monad m, Monoid w) => (Char -> m w) -> ConduitT String o m w
+foldMapMStr f = foldM (StrSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
+
+--- Apply a transformation to all values in a stream.
+map :: Monad m => (a -> b) -> ConduitT a b m ()
+map f = awaitForever $ yield . f
+
+--- Apply a transformation to all elements in a chunked stream.
+mapE :: (Monad m, Functor f) => (a -> b) -> ConduitT (f a) (f b) m ()
+mapE = map . fmap
+
+--- Apply a monomorphic transformation to all elements in a chunked stream.
+---
+--- Unlike @mapE@, this will work on types like @ByteString@ and @Text@ which
+--- are @MonoFunctor@ but not @Functor@.
+---
+--- Porting note: in absence of @MonoFunctor@, this function makes no sense,
+--- but provided anyway for future compatibility.
+omapE :: (Monad m, Functor f) => (a -> a) -> ConduitT (f a) (f a) m ()
+omapE = map . Seq.omap
+
+--- Apply a monomorphic transformation to all Chars in a String stream.
+---
+--- Unlike @mapE@, this will work on types like @String@ which is
+--- @MonoFunctor@ but not @Functor@.
+omapStr :: Monad m => (Char -> Char) -> ConduitT String String m ()
+omapStr = map . StrSeq.omap
+
+--- Apply the function to each value in the stream, resulting in a foldable
+--- value (e.g., a list). Then yield each of the individual values in that
+--- foldable value separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMap :: (Monad m, Foldable f) => (a -> f b) -> ConduitT a b m ()
+concatMap f = awaitForever (yieldMany . f)
+
+--- Apply the function to each value in the stream, resulting in a String.
+--- Then yield each of the individual Chars in that String separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMapStr :: Monad m => (a -> String) -> ConduitT a Char m ()
+concatMapStr f = awaitForever (yieldManyStr . f)
+
+--- Apply the function to each element in the chunked stream, resulting in a
+--- foldable value (e.g., a list). Then yield each of the individual values in
+--- that foldable value separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMapE :: (Monad m, Foldable f, Monoid w) => (a -> w) -> ConduitT (f a) w m ()
+concatMapE f = map (Seq.ofoldMap f)
+
+--- Apply the function to each Char in the String stream, resulting in a
+--- foldable value (e.g., a list). Then yield each of the individual values
+--- in that foldable value separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMapEStr :: (Monad m, Monoid w) => (Char -> w) -> ConduitT String w m ()
+concatMapEStr f = map (StrSeq.ofoldMap f)
+
+--- Stream up to n number of values downstream.
+---
+--- Note that, if downstream terminates early, not all values will be consumed.
+--- If you want to force /exactly/ the given number of values to be consumed,
+--- see 'takeExactly'.
+---
+--- Porting note: corresponds to Conduit.List.isolate
+take :: Monad m => Int -> ConduitT a a m ()
+take =
+    loop
+  where
+    loop count | count <= 0 = return ()
+    loop count = await >>= maybe (return ()) (\x -> yield x >> loop (count - 1))
+
+--- Stream up to n number of elements downstream in a chunked stream.
+---
+--- Note that, if downstream terminates early, not all values will be consumed.
+--- If you want to force /exactly/ the given number of values to be consumed,
+--- see 'takeExactlyE'.
+takeE :: (Monad m, Foldable f, ListView f) => Int -> ConduitT (f a) (f a) m ()
+takeE =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (Seq.onull x) $ yield x
+        unless (Seq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = Seq.splitAt i sq
+        i' = i - fromIntegral (Seq.olength x)
+
+--- Stream up to n number of Chars downstream in a String stream.
+---
+--- Note that, if downstream terminates early, not all values will be consumed.
+--- If you want to force /exactly/ the given number of values to be consumed,
+--- see 'takeExactlyStr'.
+takeStr :: Monad m => Int -> ConduitT String String m ()
+takeStr =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (StrSeq.onull x) $ yield x
+        unless (StrSeq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = StrSeq.splitAt i sq
+        i' = i - fromIntegral (StrSeq.olength x)
+
+--- Stream all values downstream that match the given predicate. (sic)
+---
+--- Same caveats regarding downstream termination apply as with 'take'.
+takeWhile :: Monad m => (a -> Bool) -> ConduitT a a m ()
+takeWhile f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+    go x = if f x
+        then yield x >> loop
+        else leftover x
+
+--- Stream all elements downstream that match the given predicate in a chunked stream.
+---
+--- Same caveats regarding downstream termination apply as with 'takeE'.
+takeWhileE :: (Monad m) => (a -> Bool) -> ConduitT [a] [a] m ()
+takeWhileE f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq = do
+        unless (Seq.onull x) $ yield x
+        if Seq.onull y
+            then loop
+            else leftover y
+      where
+        (x, y) = Seq.span f sq
+
+--- Stream all Chars downstream that match the given predicate in a String stream.
+---
+--- Same caveats regarding downstream termination apply as with 'takeStr'.
+takeWhileStr :: Monad m => (Char -> Bool) -> ConduitT String String m ()
+takeWhileStr f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq = do
+        unless (StrSeq.onull x) $ yield x
+        if StrSeq.onull y
+            then loop
+            else leftover y
+      where
+        (x, y) = StrSeq.span f sq
+
+--- Consume precisely the given number of values and feed them downstream.
+---
+--- This function is in contrast to 'take', which will only consume up to the
+--- given number of values, and will terminate early if downstream terminates
+--- early. This function will discard any additional values in the stream if
+--- they are unconsumed.
+---
+--- Note that this function takes a downstream @ConduitT@ as a parameter, as
+--- opposed to working with normal fusion. For more information, see
+--- <http://www.yesodweb.com/blog/2013/10/core-flaw-pipes-conduit>, the section
+--- titled \"pipes and conduit: isolate\".
+takeExactly :: Monad m => Int -> ConduitT a b m r -> ConduitT a b m r
+takeExactly count inner = take count .| do
+    r <- inner
+    sinkNull
+    return r
+
+--- Same as 'takeExactly', but for chunked streams.
+takeExactlyE :: (Monad m, Foldable f, ListView f) => Int -> ConduitT (f a) b m r -> ConduitT (f a) b m r
+takeExactlyE count inner = takeE count .| do
+    r <- inner
+    sinkNull
+    return r
+
+--- Same as 'takeExactly', but for String streams.
+takeExactlyStr :: Monad m => Int -> ConduitT String b m r -> ConduitT String b m r
+takeExactlyStr count inner = takeStr count .| do
+    r <- inner
+    sinkNull
+    return r
+
+--- Flatten out a stream by yielding the values contained in an incoming
+--- @Foldable@ as individually yielded values.
+concat :: (Monad m, Foldable f) => ConduitT (f a) a m ()
+concat = awaitForever yieldMany
+
+--- Flatten out a String stream by yielding the Chars contained in an incoming
+--- @String@ as individually yielded values.
+concatStr :: Monad m => ConduitT String Char m ()
+concatStr = awaitForever yieldManyStr
+
+--- Keep only values in the stream passing a given predicate.
+filter :: Monad m => (a -> Bool) -> ConduitT a a m ()
+filter f = awaitForever $ \i -> when (f i) (yield i)
+
+--- Keep only elements in the chunked stream passing a given predicate.
+filterE :: Monad m => (a -> Bool) -> ConduitT [a] [a] m ()
+filterE f = map (Seq.filter f)
+
+--- Keep only Chars in the String stream passing a given predicate.
+filterStr :: Monad m => (Char -> Bool) -> ConduitT String String m ()
+filterStr f = map (StrSeq.filter f)
+
+--- Map values as long as the result is @Just@.
+mapWhile :: Monad m => (a -> Maybe b) -> ConduitT a b m ()
+mapWhile f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+    go x =
+        case f x of
+            Just y -> yield y >> loop
+            Nothing -> leftover x
+
+--- Analog of 'Prelude.scanl' for lists.
+scanl :: Monad m => (a -> b -> a) -> a -> ConduitT b a m ()
+scanl f =
+    loop
+  where
+    loop seed =
+        await >>= maybe (yield seed) go
+      where
+        go b = do
+            let !seed' = f seed b
+            yield seed
+            loop seed'
+
+--- 'mapWhile' with a break condition dependent on a strict accumulator.
+--- Equivalently, 'mapAccum' as long as the result is @Right@. Instead of
+--- producing a leftover, the breaking input determines the resulting
+--- accumulator via @Left@.
+mapAccumWhile :: Monad m => (a -> s -> Either s (s, b)) -> s -> ConduitT a b m s
+mapAccumWhile f =
+    loop
+  where
+    loop !s = await >>= maybe (return s) go
+      where
+        go a = either (return $!) (\(s', b) -> yield b >> loop s') $ f a s
+
+--- Analog of @mapAccumL@ for lists. Note that in contrast to @mapAccumL@, the function argument
+--- takes the accumulator as its second argument, not its first argument, and the accumulated value
+--- is strict.
+---
+--- Porting note: ported from Data.Conduit.List
+mapAccum :: Monad m => (a -> s -> (s, b)) -> s -> ConduitT a b m s
+mapAccum f =
+    loop
+  where
+    loop !s = await >>= maybe (return s) go
+      where
+        go a = case f a s of
+                 (s', b) -> yield b >> loop s'
+
+--- 'concatMap' with an accumulator.
+concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> ConduitT a b m ()
+concatMapAccum f x0 = void (mapAccum f x0) .| concatMap id -- 'concat' causes javac error for some reason
+
+--- Insert the given value between each two values in the stream.
+intersperse :: Monad m => a -> ConduitT a a m ()
+intersperse x =
+    await >>= maybe (pure ()) go
+  where
+    go y = yield y >> concatMap (\z -> [x, z])
+
+--- Sliding window of values
+--- 1,2,3,4,5 with window size 2 gives
+--- [1,2],[2,3],[3,4],[4,5]
+---
+--- Best used with structures that support O(1) snoc.
+slidingWindow :: Monad m => Int -> ConduitT a [a] m ()
+slidingWindow sz = go (max 1 sz) mempty
+    where goContinue st = await >>=
+                          maybe (return ())
+                                (\x -> do
+                                   let st' = Seq.snoc st x
+                                   yield st' >> goContinue (Seq.tail st')
+                                )
+          go 0 st = yield st >> goContinue (Seq.tail st)
+          go !n st = head >>= \m ->
+                     case m of
+                       Nothing -> yield st
+                       Just x -> go (n-1) (Seq.snoc st x)
+
+--- Split input into chunk of size 'chunkSize'
+---
+--- The last element may be smaller than the 'chunkSize' (see also
+--- 'chunksOfExactlyE' which will not yield this last element)
+chunksOfE :: (Monad m, Foldable f, ListView f, Monoid (f a)) => Int -> ConduitT (f a) (f a) m ()
+chunksOfE chunkSize = chunksOfExactlyE chunkSize >> (await >>= maybe (return ()) yield)
+
+--- Split input into chunk of size 'chunkSize'
+---
+--- The last element may be smaller than the 'chunkSize' (see also
+--- 'chunksOfExactlyStr' which will not yield this last element)
+chunksOfStr :: (Monad m) => Int -> ConduitT String String m ()
+chunksOfStr chunkSize = chunksOfExactlyStr chunkSize >> (await >>= maybe (return ()) yield)
+
+--- Split input into chunk of size 'chunkSize'
+---
+--- If the input does not split into chunks exactly, the remainder will be
+--- leftover (see also 'chunksOfE')
+chunksOfExactlyE :: (Monad m, Foldable f, ListView f, Monoid (f a)) => Int -> ConduitT (f a) (f a) m ()
+chunksOfExactlyE chunkSize = await >>= maybe (return ()) start
+    where
+        start b
+            | Seq.onull b = chunksOfE chunkSize
+            | Seq.lengthIndex b < chunkSize = continue (Seq.lengthIndex b) [b]
+            | otherwise = let (first,rest) = Seq.splitAt chunkSize b in
+                            yield first >> start rest
+        continue !sofar bs = do
+            next <- await
+            case next of
+                Nothing -> leftover (mconcat $ Prelude.reverse bs)
+                Just next' ->
+                    let !sofar' = Seq.lengthIndex next' + sofar
+                        bs' = next':bs
+                    in if sofar' < chunkSize
+                            then continue sofar' bs'
+                            else start (mconcat (Prelude.reverse bs'))
+
+--- Split input into chunk of size 'chunkSize'
+---
+--- If the input does not split into chunks exactly, the remainder will be
+--- leftover (see also 'chunksOfStr')
+chunksOfExactlyStr :: (Monad m) => Int -> ConduitT String String m ()
+chunksOfExactlyStr chunkSize = await >>= maybe (return ()) start
+    where
+        start b
+            | StrSeq.onull b = chunksOfStr chunkSize
+            | StrSeq.lengthIndex b < chunkSize = continue (StrSeq.lengthIndex b) [b]
+            | otherwise = let (first,rest) = StrSeq.splitAt chunkSize b in
+                            yield first >> start rest
+        continue !sofar bs = do
+            next <- await
+            case next of
+                Nothing -> leftover (mconcat $ Prelude.reverse bs)
+                Just next' ->
+                    let !sofar' = StrSeq.lengthIndex next' + sofar
+                        bs' = next':bs
+                    in if sofar' < chunkSize
+                            then continue sofar' bs'
+                            else start (mconcat (Prelude.reverse bs'))
+
+--- Apply a monadic transformation to all values in a stream.
+---
+--- If you do not need the transformed values, and instead just want the monadic
+--- side-effects of running the action, see 'mapM_'.
+mapM :: Monad m => (a -> m b) -> ConduitT a b m ()
+mapM f = awaitForever $ \a -> lift (f a) >>= yield
+
+--- Apply a monadic transformation to all elements in a chunked stream.
+mapME :: (Monad m, Traversable f) => (a -> m b) -> ConduitT (f a) (f b) m ()
+mapME f = mapM (Traversable.mapM f)
+
+--- Apply a monadic monomorphic transformation to all elements in a chunked stream.
+---
+--- Unlike @mapME@, this will work on types like @ByteString@ and @Text@ which
+--- are @MonoFunctor@ but not @Functor@.
+---
+--- Porting note: in absence of @MonoFunctor@, this function makes no sense,
+--- but provided anyway for future compatibility.
+omapME :: (Monad m, Traversable f) => (a -> m a) -> ConduitT (f a) (f a) m ()
+omapME f = mapM (Seq.omapM f)
+
+--- Apply a monadic monomorphic transformation to all Chars in a String stream.
+---
+--- Unlike @mapME@, this will work on types like @String@ which is
+--- @MonoFunctor@ but not @Functor@.
+omapMStr :: Monad m => (Char -> m Char) -> ConduitT String String m ()
+omapMStr f = mapM (StrSeq.omapM f)
+
+--- Apply the monadic function to each value in the stream, resulting in a
+--- foldable value (e.g., a list). Then yield each of the individual values in
+--- that foldable value separately.
+---
+--- Generalizes concatMapM, mapMaybeM, and mapFoldableM.
+concatMapM :: (Monad m, Foldable f) => (a -> m (f b)) -> ConduitT a b m ()
+concatMapM f = awaitForever (lift . f >=> yieldMany)
+
+--- Apply the monadic function to each value in the stream, resulting in a
+--- String. Then yield each of the individual Chars in that String separately.
+---
+--- Generalizes concatMapM, mapMaybeM, and mapFoldableM.
+concatMapMStr :: Monad m => (a -> m String) -> ConduitT a Char m ()
+concatMapMStr f = awaitForever (lift . f >=> yieldManyStr)
+
+--- Keep only values in the stream passing a given monadic predicate.
+filterM :: Monad m => (a -> m Bool) -> ConduitT a a m ()
+filterM f =
+    awaitForever go
+  where
+    go x = do
+        b <- lift $ f x
+        when b $ yield x
+
+--- Keep only elements in the chunked stream passing a given monadic predicate.
+filterME :: Monad m => (a -> m Bool) -> ConduitT [a] [a] m ()
+filterME f = mapM (Seq.filterM f)
+
+--- Keep only Chars in the String stream passing a given monadic predicate.
+filterMStr :: Monad m => (Char -> m Bool) -> ConduitT String String m ()
+filterMStr f = mapM (StrSeq.filterM f)
+
+--- Apply a monadic action on all values in a stream.
+---
+--- This @Conduit@ can be used to perform a monadic side-effect for every
+--- value, whilst passing the value through the @Conduit@ as-is.
+---
+--- > iterM f = mapM (\a -> f a >>= \() -> return a)
+iterM :: Monad m => (a -> m ()) -> ConduitT a a m ()
+iterM f = awaitForever $ \a -> lift (f a) >> yield a
+
+--- Analog of 'Prelude.scanl' for lists, monadic.
+scanlM :: Monad m => (a -> b -> m a) -> a -> ConduitT b a m ()
+scanlM f =
+    loop
+  where
+    loop seed =
+        await >>= maybe (yield seed) go
+      where
+        go b = do
+            !seed' <- lift $ f seed b
+            yield seed
+            loop seed'
+
+--- Monadic `mapAccumWhile`.
+mapAccumWhileM :: Monad m => (a -> s -> m (Either s (s, b))) -> s -> ConduitT a b m s
+mapAccumWhileM f =
+    loop
+  where
+    loop !s = await >>= maybe (return s) go
+      where
+        go a = lift (f a s) >>= either (return $!) (\(s', b) -> yield b >> loop s')
+
+--- Monadic `mapAccum`.
+---
+--- Porting note: ported from Data.Conduit.List
+mapAccumM :: Monad m => (a -> s -> m (s, b)) -> s -> ConduitT a b m s
+mapAccumM f =
+    loop
+  where
+    loop !s = await >>= maybe (return s) go
+      where
+        go a = do (s', b) <- lift $ f a s
+                  yield b
+                  loop s'
+
+--- 'concatMapM' with an accumulator.
+concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> ConduitT a b m ()
+concatMapAccumM f x0 = void (mapAccumM f x0) .| concatMap id -- 'concat' causes javac error for some reason
