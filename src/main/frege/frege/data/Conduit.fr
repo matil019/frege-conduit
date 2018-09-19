@@ -18,10 +18,17 @@ import frege.data.conduit.internal.Pipe
 --- of output values @o@, perform actions in the @m@ monad, and produce a final
 --- result @r@. The type synonyms provided here are simply wrappers around this
 --- type.
-newtype ConduitT i o m r = ConduitT
-    { unConduitT :: forall b.
-                    (r -> Pipe i i o () m b) -> Pipe i i o () m b
+data ConduitT i o m r = ConduitT
+    { run :: forall b.
+             (r -> Pipe i i o () m b) -> Pipe i i o () m b
     }
+
+unConduitT :: ConduitT i o m r -> (r -> Pipe i i o () m b) -> Pipe i i o () m b
+unConduitT = ConduitT.run
+
+instance Monad (ConduitT i o m) where
+    pure x = ConduitT ($ x)
+    ConduitT f >>= g = ConduitT (\h -> f $ \a -> unConduitT (g a) h)
 
 --- Run a pipeline until processing completes.
 runConduit :: Monad m => ConduitT () Void m r -> m r
