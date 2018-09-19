@@ -1,0 +1,45 @@
+module frege.data.conduit.internal.Pipe where
+
+import frege.data.Void (Void, absurd)
+
+data Pipe l i o u (m :: * -> *) r =
+    {-- Provide new output to be sent downstream. This constructor has two
+      - fields: the next @Pipe@ to be used and the output value.
+      -}
+    HaveOutput (Pipe l i o u m r) o
+  | {-- Request more input from upstream. The first field takes a new input
+      - value and provides a new @Pipe@. The second takes an upstream result
+      - value, which indicates that upstream is producing no more results.
+      -}
+    NeedInput (i -> Pipe l i o u m r) (u -> Pipe l i o u m r)
+  | --- Processing with this @Pipe@ is complete, providing the final result.
+    Done r
+  | --- Require running of a monadic action to get the next @Pipe@.
+    PipeM (m (Pipe l i o u m r))
+  | --- Return leftover input, which should be provided to future operations.
+    Leftover (Pipe l i o u m r) l
+
+--- Run a pipeline until processing completes.
+runPipe :: Monad m => Pipe Void () Void () m r -> m r
+runPipe (HaveOutput _ o) = absurd o
+runPipe (NeedInput _ c) = runPipe (c ())
+runPipe (Done r) = return r
+runPipe (PipeM mp) = mp >>= runPipe
+runPipe (Leftover _ i) = absurd i
+
+--- Transforms a @Pipe@ that provides leftovers to one which does not,
+--- allowing it to be composed.
+---
+--- This function will provide any leftover values within this @Pipe@ to any
+--- calls to @await@. If there are more leftover values than are demanded, the
+--- remainder are discarded.
+injectLeftovers :: Monad m => Pipe i i o u m r -> Pipe l i o u m r
+injectLeftovers =
+    go []
+  where
+    go ls (HaveOutput p o) = HaveOutput (go ls p) o
+    go (l:ls) (NeedInput p _) = go ls $ p l
+    go [] (NeedInput p c) = NeedInput (go [] . p) (go [] . c)
+    go _ (Done r) = Done r
+    go ls (PipeM mp) = PipeM (liftM (go ls) mp)
+    go ls (Leftover p l) = go (l:ls) p

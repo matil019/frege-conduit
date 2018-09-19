@@ -1,0 +1,39 @@
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
+-- | If this is your first time with conduit, you should probably start with
+-- the tutorial:
+-- <https://github.com/snoyberg/conduit#readme>.
+module frege.data.Conduit where
+
+import frege.data.Void (Void)
+import frege.data.conduit.internal.Pipe
+  ( Pipe
+  , injectLeftovers
+  , runPipe
+  )
+
+--- Core datatype of the conduit package. This type represents a general
+--- component which can consume a stream of input values @i@, produce a stream
+--- of output values @o@, perform actions in the @m@ monad, and produce a final
+--- result @r@. The type synonyms provided here are simply wrappers around this
+--- type.
+newtype ConduitT i o m r = ConduitT
+    { unConduitT :: forall b.
+                    (r -> Pipe i i o () m b) -> Pipe i i o () m b
+    }
+
+--- Run a pipeline until processing completes.
+runConduit :: Monad m => ConduitT () Void m r -> m r
+runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
+
+--- Wait for a single input value from upstream. If no data is available,
+--- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
+--- also return @Nothing@.
+await :: Monad m => ConduitT i o m (Maybe i)
+await = ConduitT (\f -> NeedInput (f . Just) (const $ f Nothing))
+
+--- Send a value downstream to the next component to consume. If the
+--- downstream component terminates, this call will never return control.
+yield :: Monad m => o -> ConduitT i o m ()
+yield o = ConduitT (\rest -> HaveOutput (rest ()) o)

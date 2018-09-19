@@ -1,0 +1,22 @@
+--- Ported from Haskell base library
+--- Copyright   :  (C) 2008-2014 Edward Kmett
+--- License     :  BSD-style (see the file libraries/base/LICENSE)
+-- TODO split into subproject
+module frege.data.Void where
+
+--- Uninhabited data type
+data Void
+
+--- nowarn: diverge
+--- Since 'Void' values logically don't exist, this witnesses the
+--- logical reasoning tool of \"ex falso quodlibet\".
+---
+--- > >>> let x :: Either Void Int; x = Right 5
+--- > >>> :{
+--- > case x of
+--- >      Right r -> r
+--- >      Left l  -> absurd l
+--- > :}
+--- > 5
+absurd :: Void -> a
+absurd _ = undefined
