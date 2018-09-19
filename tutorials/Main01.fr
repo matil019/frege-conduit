@@ -1,0 +1,12 @@
+module Main01 where
+
+import frege.Conduit
+
+main = do
+    println $ runConduitPure $ yieldMany [1..10] .| sumC
+
+    -- writeFile "input.txt" "This is a test."
+    -- runConduitRes $ sourceFileBS "input.txt" .| sinkFile "output.txt"
+    -- readFile "output.txt" >>= putStrLn
+
+    println $ runConduitPure $ yieldMany [1..10] .| mapC (+ 1) .| sinkList

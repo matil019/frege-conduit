@@ -1,0 +1,11 @@
+module Main18 where
+
+import frege.Conduit
+
+source :: Monad m => ConduitT i Int m ()
+source = do
+    yieldMany [1..10]
+    yieldMany [11..20]
+
+main :: IO ()
+main = runConduit $ source .| mapM_C println

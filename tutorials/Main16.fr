@@ -1,0 +1,15 @@
+module Main16 where
+
+import frege.Conduit
+
+evenM :: Int -> IO Bool
+evenM i = do
+    let res = even i
+    println (i, res)
+    return res
+
+main :: IO ()
+main = runConduit
+     $ yieldMany [1..10]
+    .| filterMC evenM
+    .| mapM_C println

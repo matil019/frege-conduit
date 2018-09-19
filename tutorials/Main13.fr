@@ -1,0 +1,6 @@
+module Main13 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| filterC even .| mapM_C println

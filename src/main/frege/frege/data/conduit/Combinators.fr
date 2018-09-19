@@ -32,7 +32,9 @@ import frege.Prelude hiding
   , replicate, replicateM
   , scanl
   , sum
-  , take, takeWhile)
+  , take, takeWhile
+  , unlines
+  )
 
 import frege.control.monad.trans.MonadTrans (lift)
 import frege.data.Conduit
@@ -857,8 +859,15 @@ takeExactlyStr count inner = takeStr count .| do
 
 --- Flatten out a stream by yielding the values contained in an incoming
 --- @Foldable@ as individually yielded values.
+---
+--- Also see 'concatList'.
 concat :: (Monad m, Foldable f) => ConduitT (f a) a m ()
 concat = awaitForever yieldMany
+
+--- The specialization of 'concat' to a list in order to workaround javac
+--- compilation error (likely a Frege bug).
+concatList :: Monad m => ConduitT [a] a m ()
+concatList = awaitForever yieldMany
 
 --- Flatten out a String stream by yielding the Chars contained in an incoming
 --- @String@ as individually yielded values.
@@ -929,7 +938,7 @@ mapAccum f =
 
 --- 'concatMap' with an accumulator.
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> ConduitT a b m ()
-concatMapAccum f x0 = void (mapAccum f x0) .| concatMap id -- 'concat' causes javac error for some reason
+concatMapAccum f x0 = void (mapAccum f x0) .| concatList
 
 --- Insert the given value between each two values in the stream.
 intersperse :: Monad m => a -> ConduitT a a m ()
@@ -1123,4 +1132,8 @@ mapAccumM f =
 
 --- 'concatMapM' with an accumulator.
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> ConduitT a b m ()
-concatMapAccumM f x0 = void (mapAccumM f x0) .| concatMap id -- 'concat' causes javac error for some reason
+concatMapAccumM f x0 = void (mapAccumM f x0) .| concatList
+
+--- Insert a newline character after each incoming chunk of data.
+unlines :: Monad m => ConduitT String String m ()
+unlines = concatMap (:["\n"])

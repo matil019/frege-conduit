@@ -1,0 +1,9 @@
+module Main25 where
+
+import frege.Conduit
+
+main :: IO ()
+main = println $ runConduitPure $ yieldMany [1..10] .| do
+    x <- takeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)

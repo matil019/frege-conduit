@@ -1,0 +1,9 @@
+module Main15 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduit
+     $ yieldMany (map (replicate 5) [1..10])
+    .| concatListC
+    .| mapM_C println

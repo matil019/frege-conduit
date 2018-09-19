@@ -1,0 +1,10 @@
+module Main09 where
+
+import frege.Conduit
+
+main :: IO ()
+main = println $ runConduitPure
+     $ yieldMany [1..10 :: Int]
+    .| mapC show
+    .| unlinesC
+    .| foldC

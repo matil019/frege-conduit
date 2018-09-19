@@ -1,0 +1,11 @@
+module Main20 where
+
+import frege.Conduit
+
+trans :: Monad m => ConduitT Int Int m ()
+trans = do
+    takeC 5 .| mapC (+ 1)
+    mapC (* 2)
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| trans .| mapM_C println

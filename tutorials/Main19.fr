@@ -1,0 +1,14 @@
+module Main19 where
+
+import frege.Conduit
+
+sink :: Monad m => ConduitT Int o m (String, Int)
+sink = do
+    x <- takeC 5 .| mapC show .| foldC
+    y <- sumC
+    return (x, y)
+
+main :: IO ()
+main = do
+    let res = runConduitPure $ yieldMany [1..10] .| sink
+    println res

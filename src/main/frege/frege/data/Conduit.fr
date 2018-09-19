@@ -3,6 +3,7 @@
 --- <https://github.com/snoyberg/conduit#readme>.
 module frege.data.Conduit where
 
+import frege.control.monad.trans.MonadIO (MonadIO)
 import frege.control.monad.trans.MonadTrans (MonadTrans)
 import frege.data.Monoid (Monoid)
 import frege.data.Void (Void)
@@ -11,6 +12,7 @@ import frege.data.conduit.internal.Pipe
   , injectLeftovers
   , runPipe
   )
+import frege.data.wrapper.Identity (Identity)
 
 --- Core datatype of the conduit package. This type represents a general
 --- component which can consume a stream of input values @i@, produce a stream
@@ -29,6 +31,9 @@ instance Monad (ConduitT i o m) where
     pure x = ConduitT ($ x)
     ConduitT f >>= g = ConduitT (\h -> f $ \a -> unConduitT (g a) h)
 
+instance MonadIO m => MonadIO (ConduitT i o m) where
+    liftIO = lift . liftIO
+
 instance MonadTrans (ConduitT i o) where
     lift mr = ConduitT (\rest -> PipeM (liftM rest mr))
 
@@ -40,6 +45,12 @@ instance Monoid (ConduitT i o m ()) where
 --- Run a pipeline until processing completes.
 runConduit :: Monad m => ConduitT () Void m r -> m r
 runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
+
+--- Run a pure pipeline until processing completes, i.e. a pipeline with
+--- @Identity@ as the base monad. This is equivalent to
+--- @Identity.run . runConduit@.
+runConduitPure :: ConduitT () Void Identity r -> r
+runConduitPure = Identity.run . runConduit
 
 --- Named function synonym for '.|'.
 ---

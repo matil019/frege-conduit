@@ -1,0 +1,27 @@
+module frege.Conduit where
+
+import frege.control.monad.trans.MonadIO public
+import frege.control.monad.trans.MonadTrans public
+import frege.data.Conduit as DC public
+import frege.data.conduit.Combinators as DCC
+  ( public concat      concatC
+  , public concatList  concatListC
+  , public filter      filterC
+  , public filterM     filterMC
+  , public fold        foldC
+  , public foldM       foldMC
+  , public foldMapM    foldMapMC
+  , public foldl       foldlC
+  , public intersperse intersperseC
+  , public iterM       iterMC
+  , public map         mapC
+  , public mapM        mapMC
+  , public mapM_       mapM_C
+  , public sinkList
+  , public sinkNull
+  , public sum         sumC
+  , public take        takeC
+  , public takeWhile   takeWhileC
+  , public unlines     unlinesC
+  , public yieldMany
+  )

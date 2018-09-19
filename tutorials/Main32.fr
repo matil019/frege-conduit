@@ -1,0 +1,10 @@
+module Main32 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduit
+     $ yieldMany [1..10]
+    .| iterMC println
+    .| liftIO (putStrLn "I was called")
+    .| sinkNull

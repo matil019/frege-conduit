@@ -1,0 +1,21 @@
+module Main05 where
+
+import frege.Conduit
+
+magic :: Int -> IO Int
+magic x = do
+    println $ "I'm doing magic with " ++ show x
+    return $ x * 2
+
+main :: IO ()
+main = do
+    println "List version:"
+    mapM magic (take 10 [1..]) >>= mapM_ println . takeWhile (< 18)
+    println ""
+    println "Conduit version:"
+    runConduit
+          $ yieldMany [1..]
+         .| takeC 10
+         .| mapMC magic
+         .| takeWhileC (< 18)
+         .| mapM_C println

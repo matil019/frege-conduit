@@ -1,0 +1,8 @@
+module Main28 where
+
+import frege.Conduit
+
+main :: IO ()
+main = println $ runConduitPure $ return () .| do
+    mapM_ leftover [1..10]
+    sinkList

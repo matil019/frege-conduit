@@ -1,0 +1,13 @@
+module Main11 where
+
+import frege.Conduit
+
+magic :: Int -> Int -> IO Int
+magic total i = do
+    println $ "Doing magic on " ++ show i
+    return $! total * i
+
+main :: IO ()
+main = do
+    res <- runConduit $ yieldMany [1..10] .| foldMC magic 1
+    println res

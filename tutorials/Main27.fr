@@ -1,0 +1,23 @@
+module Main27 where
+
+import frege.Conduit
+
+myGoodTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
+myGoodTakeWhileC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x
+                | f x -> do
+                    yield x
+                    loop
+                | otherwise -> leftover x
+
+main :: IO ()
+main = println $ runConduitPure $ yieldMany [1..10] .| do
+    x <- myGoodTakeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)

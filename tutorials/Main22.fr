@@ -1,0 +1,6 @@
+module Main22 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduit $ (yield 1 >> yield 2) .| mapM_C println

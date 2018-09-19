@@ -1,0 +1,40 @@
+module Main24a where
+
+import frege.Conduit
+
+myFilterC :: Monad m => (a -> Bool) -> ConduitT a a m ()
+myFilterC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x -> do
+              when (f x) $ yield x
+              loop
+
+myMapMC :: Monad m => (a -> m b) -> ConduitT a b m ()
+myMapMC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x -> do
+                y <- lift $ f x
+                yield y
+                loop
+
+magic :: Int -> IO String
+magic i = do
+    println $ "got: " ++ show i
+    pure $ "<" ++ show i ++ ">"
+
+main :: IO ()
+main = runConduit
+     $ yieldMany [1..10]
+    .| myFilterC (\x -> x `mod` 2 == 0)
+    .| myMapMC magic
+    .| mapM_C println

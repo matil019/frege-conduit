@@ -1,0 +1,14 @@
+module Main10 where
+
+import frege.Conduit
+import frege.data.wrapper.Num (Product)
+
+magic :: Int -> IO (Product Int)
+magic i = do
+    println $ "Doing magic on " ++ show i
+    return $ Product i
+
+main :: IO ()
+main = do
+    Product res <- runConduit $ yieldMany [1..10] .| foldMapMC magic
+    println res

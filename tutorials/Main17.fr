@@ -1,0 +1,8 @@
+module Main17 where
+
+import frege.Conduit
+
+main :: IO ()
+main = do
+    res <- runConduit $ yieldMany [1..10] .| iterMC println .| sumC
+    print res

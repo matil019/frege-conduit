@@ -1,0 +1,11 @@
+module Main23 where
+
+import frege.Conduit
+
+main :: IO ()
+main = do
+    println $ runConduitPure $ yield 1 .| await
+    println $ runConduitPure $ yieldMany ([] :: [()]) .| await
+
+    println $ (runConduitPure $ return () .| await :: Maybe ())
+    println $ runConduitPure await

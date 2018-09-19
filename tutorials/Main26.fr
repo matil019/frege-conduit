@@ -1,0 +1,23 @@
+module Main26 where
+
+import frege.Conduit
+
+myTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
+myTakeWhileC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x
+                | f x -> do
+                    yield x
+                    loop
+                | otherwise -> return ()
+
+main :: IO ()
+main = println $ runConduitPure $ yieldMany [1..10] .| do
+    x <- myTakeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)
