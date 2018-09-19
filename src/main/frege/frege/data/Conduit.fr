@@ -27,6 +27,63 @@ newtype ConduitT i o m r = ConduitT
 runConduit :: Monad m => ConduitT () Void m r -> m r
 runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
 
+--- Named function synonym for '.|'.
+---
+--- Equivalent to '.|'.
+fuse :: Monad m => ConduitT a b m () -> ConduitT b c m r -> ConduitT a c m r
+fuse = (.|)
+
+--- Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
+---
+--- Output from the upstream (left) conduit will be fed into the
+--- downstream (right) conduit. Processing will terminate when
+--- downstream (right) returns.
+--- Leftover data returned from the right @Conduit@ will be discarded.
+---
+--- Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
+--- be removed in a future version.
+---
+--- Note that, while this operator looks like categorical composition
+--- (from "Control.Category"), there are a few reasons it's different:
+---
+--- * The position of the type parameters to 'ConduitT' do not
+---   match. We would need to change @ConduitT i o m r@ to @ConduitT r
+---   m i o@, which would preclude a 'Monad' or 'MonadTrans' instance.
+---
+--- * The result value from upstream and downstream are allowed to
+---   differ between upstream and downstream. In other words, we would
+---   need the type signature here to look like @ConduitT a b m r ->
+---   ConduitT b c m r -> ConduitT a c m r@.
+---
+--- * Due to leftovers, we do not have a left identity in Conduit. This
+---   can be achieved with the underlying @Pipe@ datatype, but this is
+---   not generally recommended. See <https://stackoverflow.com/a/15263700>.
+(.|) :: Monad m => ConduitT a b m ()
+                -> ConduitT b c m r
+                -> ConduitT a c m r
+ConduitT left0 .| ConduitT right0 = ConduitT (\rest ->
+    let goRight left right =
+            case right of
+                HaveOutput p o    -> HaveOutput (recurse p) o
+                NeedInput rp rc   -> goLeft rp rc left
+                Done r2           -> rest r2
+                PipeM mp          -> PipeM (liftM recurse mp)
+                Leftover right' i -> goRight (HaveOutput left i) right'
+          where
+            recurse = goRight left
+
+        goLeft rp rc left =
+            case left of
+                HaveOutput left' o        -> goRight left' (rp o)
+                NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+                Done r1                   -> goRight (Done r1) (rc r1)
+                PipeM mp                  -> PipeM (liftM recurse mp)
+                Leftover left' i          -> Leftover (recurse left') i
+          where
+            recurse = goLeft rp rc
+     in goRight (left0 Done) (right0 Done)
+    )
+
 --- Wait for a single input value from upstream. If no data is available,
 --- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
 --- also return @Nothing@.
