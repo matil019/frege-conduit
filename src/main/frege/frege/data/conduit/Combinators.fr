@@ -4,7 +4,8 @@
 --- * For chunked operations (@fooE@), specialized functions are provided.
 ---   Some expects lists only, some can accept general @Foldable@s.
 ---   Please consult type signature for each function.
---- * Also, string variants are added (@fooStr@ for each @fooE@)
+--- * Also, String variants are added (@fooStr@ for each @fooE@)
+--- * Moreover, @ByteString@ (immutable byte[]) variants are added (@fooBS@).
 module frege.data.conduit.Combinators where
 
 import frege.Prelude hiding
@@ -37,6 +38,7 @@ import frege.Prelude hiding
   )
 
 import frege.control.monad.trans.MonadTrans (lift)
+import frege.data.ByteString (ByteString)
 import frege.data.Conduit
   ( .|
   , ConduitT
@@ -45,7 +47,7 @@ import frege.data.Conduit
   , leftover
   , yield
   )
-import frege.data.conduit.internal.Sequence (Seq, StrSeq)
+import frege.data.conduit.internal.Sequence (BSSeq, Seq, StrSeq)
 import frege.data.Foldable (Foldable(), traverse_)
 import frege.data.List ()
 import frege.data.Monoid (Monoid, mappend)
@@ -56,9 +58,13 @@ import frege.java.Util (ArrayList)
 yieldMany :: (Monad m, Foldable f) => f a -> ConduitT i a m ()
 yieldMany = Seq.ofoldMap yield
 
---- Yield each of the characters contained by the given @String@.
+--- Yield each of the Chars contained by the given @String@.
 yieldManyStr :: Monad m => String -> ConduitT i Char m ()
 yieldManyStr = StrSeq.ofoldMap yield
+
+--- Yield each of the Bytes contained by the given @ByteString@.
+yieldManyBS :: Monad m => ByteString -> ConduitT i Byte m ()
+yieldManyBS = BSSeq.ofoldMap yield
 
 --- Generate a producer from a seed value.
 unfold :: Monad m => (b -> Maybe (a, b)) -> b -> ConduitT i a m ()
@@ -181,6 +187,25 @@ dropStr =
         (x, y) = StrSeq.splitAt i sq
         i' = i - fromIntegral (StrSeq.olength x)
 
+--- Drop a certain number of Bytes from a ByteString stream.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropBS :: Monad m => Int -> ConduitT ByteString o m ()
+dropBS =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (BSSeq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = BSSeq.splitAt i sq
+        i' = i - fromIntegral (BSSeq.olength x)
+
 --- Drop all values which match the given predicate.
 ---
 --- Note: you likely want to use it with monadic composition. See the docs
@@ -222,6 +247,21 @@ dropWhileStr f =
       where
         x = StrSeq.dropWhile f sq
 
+--- Drop all elements in the ByteString stream which match the given predicate.
+---
+--- Note: you likely want to use it with monadic composition. See the docs
+--- for 'drop'.
+dropWhileBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString o m ()
+dropWhileBS f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq =
+        if BSSeq.onull x then loop else leftover x
+      where
+        x = BSSeq.dropWhile f sq
+
 --- Monoidally combine all values in the stream.
 ---
 --- Porting note: this is NOT Conduit.List.fold. It is 'foldl'.
@@ -257,6 +297,10 @@ foldlE f x = foldl (Seq.ofoldl' f) x
 foldlStr :: Monad m => (a -> Char -> a) -> a -> ConduitT String o m a
 foldlStr f x = foldl (StrSeq.ofoldl' f) x
 
+--- A strict left fold on a ByteString stream.
+foldlBS :: Monad m => (a -> Byte -> a) -> a -> ConduitT ByteString o m a
+foldlBS f x = foldl (BSSeq.ofoldl' f) x
+
 --- Apply the provided mapping function and monoidal combine all values.
 foldMap :: (Monad m, Monoid b) => (a -> b) -> ConduitT a o m b
 foldMap f = let combiner accum = mappend accum . f in foldl combiner mempty
@@ -268,6 +312,10 @@ foldMapE f = foldMap (Seq.ofoldMap f)
 --- Apply the provided mapping function and monoidal combine all elements of the String stream.
 foldMapStr :: (Monad m, Monoid w) => (Char -> w) -> ConduitT String o m w
 foldMapStr f = foldMap (StrSeq.ofoldMap f)
+
+--- Apply the provided mapping function and monoidal combine all elements of the ByteString stream.
+foldMapBS :: (Monad m, Monoid w) => (Byte -> w) -> ConduitT ByteString o m w
+foldMapBS f = foldMap (BSSeq.ofoldMap f)
 
 --- Check that all values in the stream return True.
 ---
@@ -283,12 +331,19 @@ all f = fmap isNothing $ find (not . f)
 allE :: (Monad m, Foldable f) => (a -> Bool) -> ConduitT (f a) o m Bool
 allE f = all (Seq.oall f)
 
---- Check that all elements in the chunked stream return True.
+--- Check that all Chars in the String stream return True.
 ---
 --- Subject to shortcut logic: at the first False, consumption of the stream
 --- will stop.
 allStr :: Monad m => (Char -> Bool) -> ConduitT String o m Bool
 allStr f = all (StrSeq.oall f)
+
+--- Check that all Bytes in the ByteString stream return True.
+---
+--- Subject to shortcut logic: at the first False, consumption of the stream
+--- will stop.
+allBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString o m Bool
+allBS f = all (BSSeq.oall f)
 
 --- Check that at least one value in the stream returns True.
 ---
@@ -304,12 +359,19 @@ any = fmap isJust . find
 anyE :: (Monad m, Foldable f) => (a -> Bool) -> ConduitT (f a) o m Bool
 anyE f = any (Seq.oany f)
 
---- Check that at least one element in the String stream returns True.
+--- Check that at least one Char in the String stream returns True.
 ---
 --- Subject to shortcut logic: at the first True, consumption of the stream
 --- will stop.
 anyStr :: Monad m => (Char -> Bool) -> ConduitT String o m Bool
 anyStr f = any (StrSeq.oany f)
+
+--- Check that at least one Byte in the ByteString stream returns True.
+---
+--- Subject to shortcut logic: at the first True, consumption of the stream
+--- will stop.
+anyBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString o m Bool
+anyBS f = any (BSSeq.oany f)
 
 --- Are all values in the stream True?
 ---
@@ -357,6 +419,12 @@ elemE f = any (Seq.oelem f)
 elemStr :: Monad m => Char -> ConduitT String o m Bool
 elemStr f = any (StrSeq.oelem f)
 
+--- Are any Bytes in the ByteString stream equal to the given Byte?
+---
+--- Stops consuming as soon as a match is found.
+elemBS :: Monad m => Byte -> ConduitT ByteString o m Bool
+elemBS f = any (BSSeq.oelem f)
+
 --- Are no values in the stream equal to the given value?
 ---
 --- Stops consuming as soon as a match is found.
@@ -369,11 +437,17 @@ notElem x = all (/= x)
 notElemE :: (Monad m, Foldable f, Eq a) => a -> ConduitT (f a) o m Bool
 notElemE x = all (Seq.onotElem x)
 
---- Are no elements in the String stream equal to the given Char?
+--- Are no Chars in the String stream equal to the given Char?
 ---
 --- Stops consuming as soon as a match is found.
 notElemStr :: Monad m => Char -> ConduitT String o m Bool
 notElemStr x = all (StrSeq.onotElem x)
+
+--- Are no Bytes in the ByteString stream equal to the given Byte?
+---
+--- Stops consuming as soon as a match is found.
+notElemBS :: Monad m => Byte -> ConduitT ByteString o m Bool
+notElemBS x = all (BSSeq.onotElem x)
 
 --- Consume all values from the stream and return as a list. Note that this
 --- will pull all values into memory.
@@ -406,8 +480,20 @@ sinkNull :: Monad m => ConduitT a o m ()
 sinkNull = awaitForever $ \_ -> return ()
 
 --- Same as @await@, but discards any leading 'onull' values.
+---
+--- Also see 'awaitNonNullList'.
 awaitNonNull :: (Monad m, Foldable f) => ConduitT (f a) o m (Maybe (f a))
 awaitNonNull =
+    go
+  where
+    go = await >>= maybe (return Nothing) go'
+
+    go' = maybe go (return . Just) . Seq.fromNullable
+
+--- The specialization of 'awaitNonNull' to a list in order to workaround javac
+--- compilation error (likely a Frege bug).
+awaitNonNullList :: Monad m => ConduitT [a] o m (Maybe [a])
+awaitNonNullList =
     go
   where
     go = await >>= maybe (return Nothing) go'
@@ -422,6 +508,15 @@ awaitNonNullStr =
     go = await >>= maybe (return Nothing) go'
 
     go' = maybe go (return . Just) . StrSeq.fromNullable
+
+--- Same as @await@, but discards any leading empty ByteStrings.
+awaitNonNullBS :: (Monad m) => ConduitT ByteString o m (Maybe ByteString)
+awaitNonNullBS =
+    go
+  where
+    go = await >>= maybe (return Nothing) go'
+
+    go' = maybe go (return . Just) . BSSeq.fromNullable
 
 --- Take a single value from the stream, if available.
 ---
@@ -459,6 +554,19 @@ headStr =
                 unless (StrSeq.onull z) $ leftover z
                 return $ Just y
 
+--- Get the next Byte in the ByteString stream.
+headBS :: Monad m => ConduitT ByteString o m (Maybe Byte)
+headBS =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case BSSeq.uncons x of
+            Nothing -> loop
+            Just (y, z) -> do
+                unless (BSSeq.onull z) $ leftover z
+                return $ Just y
+
 --- View the next value in the stream without consuming it.
 peek :: Monad m => ConduitT a o m (Maybe a)
 peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
@@ -489,6 +597,19 @@ peekStr =
                 leftover x
                 return $ Just y
 
+--- View the next Byte in the ByteString stream without consuming it.
+peekBS :: Monad m => ConduitT ByteString o m (Maybe Byte)
+peekBS =
+    loop
+  where
+    loop = await >>= maybe (return Nothing) go
+    go x =
+        case BSSeq.headMay x of
+            Nothing -> loop
+            Just y -> do
+                leftover x
+                return $ Just y
+
 --- Retrieve the last value in the stream, if present.
 last :: Monad m => ConduitT a o m (Maybe a)
 last =
@@ -500,13 +621,12 @@ last =
 lastDef :: Monad m => a -> ConduitT a o m a
 lastDef a = fromMaybe a <$> last
 
--- javac compilation error for some reason
--- --- | Retrieve the last element in the chunked stream, if present.
--- lastE :: (Monad m) => ConduitT [a] o m (Maybe a)
--- lastE =
---     awaitNonNull >>= maybe (return Nothing) (loop . Seq.last)
---   where
---     loop prev = awaitNonNull >>= maybe (return $ Just prev) (loop . Seq.last)
+--- | Retrieve the last element in the chunked stream, if present.
+lastE :: (Monad m) => ConduitT [a] o m (Maybe a)
+lastE =
+    awaitNonNullList >>= maybe (return Nothing) (loop . Seq.last)
+  where
+    loop prev = awaitNonNullList >>= maybe (return $ Just prev) (loop . Seq.last)
 
 --- Retrieve the last Char in the String stream, if present.
 lastStr :: Monad m => ConduitT String o m (Maybe Char)
@@ -514,6 +634,13 @@ lastStr = do
     awaitNonNullStr >>= maybe (return Nothing) (loop . StrSeq.last)
   where
     loop prev = awaitNonNullStr >>= maybe (return $ Just prev) (loop . StrSeq.last)
+
+--- Retrieve the last Byte in the ByteString stream, if present.
+lastBS :: Monad m => ConduitT ByteString o m (Maybe Byte)
+lastBS = do
+    awaitNonNullBS >>= maybe (return Nothing) (loop . BSSeq.last)
+  where
+    loop prev = awaitNonNullBS >>= maybe (return $ Just prev) (loop . BSSeq.last)
 
 --- Count how many values are in the stream.
 length :: (Monad m, Num len) => ConduitT a o m len
@@ -527,6 +654,10 @@ lengthE = foldl (\x y -> x + fromIntegral (Seq.olength y)) 0
 lengthStr :: (Monad m, Num len) => ConduitT String o m len
 lengthStr = foldl (\x y -> x + fromIntegral (StrSeq.olength y)) 0
 
+--- Count how many Bytes are in the ByteString stream.
+lengthBS :: (Monad m, Num len) => ConduitT ByteString o m len
+lengthBS = foldl (\x y -> x + fromIntegral (BSSeq.olength y)) 0
+
 --- Count how many values in the stream pass the given predicate.
 lengthIf :: (Monad m, Num len) => (a -> Bool) -> ConduitT a o m len
 lengthIf f = foldl (\cnt a -> if f a then (cnt + 1) else cnt) 0
@@ -538,6 +669,10 @@ lengthIfE f = foldlE (\cnt a -> if f a then (cnt + 1) else cnt) 0
 --- Count how many Chars in the String stream pass the given predicate.
 lengthIfStr :: (Monad m, Num len) => (Char -> Bool) -> ConduitT String o m len
 lengthIfStr f = foldlStr (\cnt a -> if f a then (cnt + 1) else cnt) 0
+
+--- Count how many Bytes in the ByteString stream pass the given predicate.
+lengthIfBS :: (Monad m, Num len) => (Byte -> Bool) -> ConduitT ByteString o m len
+lengthIfBS f = foldlBS (\cnt a -> if f a then (cnt + 1) else cnt) 0
 
 --- A strict left fold on a chunked stream, with no starting value.
 --- Returns 'Nothing' when the stream is empty.
@@ -596,6 +731,17 @@ nullStr =
     go = await >>= maybe (return True) go'
     go' x = if StrSeq.onull x then go else leftover x >> return False
 
+--- True if there are no Bytes in the ByteString stream.
+---
+--- This function may remove empty leading chunks from the stream, but otherwise
+--- will not modify it.
+nullBS :: Monad m => ConduitT ByteString o m Bool
+nullBS =
+    go
+  where
+    go = await >>= maybe (return True) go'
+    go' x = if BSSeq.onull x then go else leftover x >> return False
+
 --- Get the sum of all values in the stream.
 sum :: (Monad m, Num a) => ConduitT a o m a
 sum = foldl (+) 0
@@ -645,6 +791,15 @@ mapM_E f = mapM_ (Seq.omapM_ f)
 mapM_Str :: Monad m => (Char -> m ()) -> ConduitT String o m ()
 mapM_Str f = mapM_ (StrSeq.omapM_ f)
 
+--- Apply the action to all Bytes in the ByteString stream.
+---
+--- Note: the same caveat as with 'mapM_' applies. If you don't want to
+--- consume the values, you can use 'iterM':
+---
+--- > iterM (omapM_ f)
+mapM_BS :: Monad m => (Byte -> m ()) -> ConduitT ByteString o m ()
+mapM_BS f = mapM_ (BSSeq.omapM_ f)
+
 --- A monadic strict left fold.
 foldM :: Monad m => (a -> b -> m a) -> a -> ConduitT b o m a
 foldM f =
@@ -665,6 +820,10 @@ foldME f = foldM (Seq.ofoldlM f)
 foldMStr :: Monad m => (a -> Char -> m a) -> a -> ConduitT String o m a
 foldMStr f = foldM (StrSeq.ofoldlM f)
 
+--- A monadic strict left fold on a ByteString stream.
+foldMBS :: Monad m => (a -> Byte -> m a) -> a -> ConduitT ByteString o m a
+foldMBS f = foldM (BSSeq.ofoldlM f)
+
 --- Apply the provided monadic mapping function and monoidal combine all values.
 foldMapM :: (Monad m, Monoid w) => (a -> m w) -> ConduitT a o m w
 foldMapM f = let combiner accum = liftM (mappend accum) . f in foldM combiner mempty
@@ -678,6 +837,11 @@ foldMapME f = foldM (Seq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
 --- Chars in the String stream.
 foldMapMStr :: (Monad m, Monoid w) => (Char -> m w) -> ConduitT String o m w
 foldMapMStr f = foldM (StrSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
+
+--- Apply the provided monadic mapping function and monoidal combine all
+--- Bytes in the ByteString stream.
+foldMapMBS :: (Monad m, Monoid w) => (Byte -> m w) -> ConduitT ByteString o m w
+foldMapMBS f = foldM (BSSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
 
 --- Apply a transformation to all values in a stream.
 map :: Monad m => (a -> b) -> ConduitT a b m ()
@@ -704,6 +868,13 @@ omapE = map . Seq.omap
 omapStr :: Monad m => (Char -> Char) -> ConduitT String String m ()
 omapStr = map . StrSeq.omap
 
+--- Apply a monomorphic transformation to all Bytes in a String stream.
+---
+--- Unlike @mapE@, this will work on types like @ByteString@ which is
+--- @MonoFunctor@ but not @Functor@.
+omapBS :: Monad m => (Byte -> Byte) -> ConduitT ByteString ByteString m ()
+omapBS = map . BSSeq.omap
+
 --- Apply the function to each value in the stream, resulting in a foldable
 --- value (e.g., a list). Then yield each of the individual values in that
 --- foldable value separately.
@@ -718,6 +889,13 @@ concatMap f = awaitForever (yieldMany . f)
 --- Generalizes concatMap, mapMaybe, and mapFoldable.
 concatMapStr :: Monad m => (a -> String) -> ConduitT a Char m ()
 concatMapStr f = awaitForever (yieldManyStr . f)
+
+--- Apply the function to each value in the stream, resulting in a ByteString.
+--- Then yield each of the individual Bytes in that String separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMapBS :: Monad m => (a -> ByteString) -> ConduitT a Byte m ()
+concatMapBS f = awaitForever (yieldManyBS . f)
 
 --- Apply the function to each element in the chunked stream, resulting in a
 --- foldable value (e.g., a list). Then yield each of the individual values in
@@ -734,6 +912,14 @@ concatMapE f = map (Seq.ofoldMap f)
 --- Generalizes concatMap, mapMaybe, and mapFoldable.
 concatMapEStr :: (Monad m, Monoid w) => (Char -> w) -> ConduitT String w m ()
 concatMapEStr f = map (StrSeq.ofoldMap f)
+
+--- Apply the function to each Byte in the ByteString stream, resulting in a
+--- foldable value (e.g., a list). Then yield each of the individual values
+--- in that foldable value separately.
+---
+--- Generalizes concatMap, mapMaybe, and mapFoldable.
+concatMapEBS :: (Monad m, Monoid w) => (Byte -> w) -> ConduitT ByteString w m ()
+concatMapEBS f = map (BSSeq.ofoldMap f)
 
 --- Stream up to n number of values downstream.
 ---
@@ -791,6 +977,27 @@ takeStr =
         (x, y) = StrSeq.splitAt i sq
         i' = i - fromIntegral (StrSeq.olength x)
 
+--- Stream up to n number of Bytes downstream in a ByteString stream.
+---
+--- Note that, if downstream terminates early, not all values will be consumed.
+--- If you want to force /exactly/ the given number of values to be consumed,
+--- see 'takeExactlyStr'.
+takeBS :: Monad m => Int -> ConduitT ByteString ByteString m ()
+takeBS =
+    loop
+  where
+    loop i = if i <= 0
+        then return ()
+        else await >>= maybe (return ()) (go i)
+
+    go i sq = do
+        unless (BSSeq.onull x) $ yield x
+        unless (BSSeq.onull y) $ leftover y
+        loop i'
+      where
+        (x, y) = BSSeq.splitAt i sq
+        i' = i - fromIntegral (BSSeq.olength x)
+
 --- Stream all values downstream that match the given predicate. (sic)
 ---
 --- Same caveats regarding downstream termination apply as with 'take'.
@@ -837,6 +1044,23 @@ takeWhileStr f =
       where
         (x, y) = StrSeq.span f sq
 
+--- Stream all Bytes downstream that match the given predicate in a ByteString stream.
+---
+--- Same caveats regarding downstream termination apply as with 'takeStr'.
+takeWhileBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString ByteString m ()
+takeWhileBS f =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+
+    go sq = do
+        unless (BSSeq.onull x) $ yield x
+        if BSSeq.onull y
+            then loop
+            else leftover y
+      where
+        (x, y) = BSSeq.span f sq
+
 --- Consume precisely the given number of values and feed them downstream.
 ---
 --- This function is in contrast to 'take', which will only consume up to the
@@ -868,6 +1092,13 @@ takeExactlyStr count inner = takeStr count .| do
     sinkNull
     return r
 
+--- Same as 'takeExactly', but for ByteString streams.
+takeExactlyBS :: Monad m => Int -> ConduitT ByteString b m r -> ConduitT ByteString b m r
+takeExactlyBS count inner = takeBS count .| do
+    r <- inner
+    sinkNull
+    return r
+
 --- Flatten out a stream by yielding the values contained in an incoming
 --- @Foldable@ as individually yielded values.
 ---
@@ -885,6 +1116,11 @@ concatList = awaitForever yieldMany
 concatStr :: Monad m => ConduitT String Char m ()
 concatStr = awaitForever yieldManyStr
 
+--- Flatten out a String stream by yielding the Bytes contained in an incoming
+--- @ByteString@ as individually yielded values.
+concatBS :: Monad m => ConduitT ByteString Byte m ()
+concatBS = awaitForever yieldManyBS
+
 --- Keep only values in the stream passing a given predicate.
 filter :: Monad m => (a -> Bool) -> ConduitT a a m ()
 filter f = awaitForever $ \i -> when (f i) (yield i)
@@ -896,6 +1132,10 @@ filterE f = map (Seq.filter f)
 --- Keep only Chars in the String stream passing a given predicate.
 filterStr :: Monad m => (Char -> Bool) -> ConduitT String String m ()
 filterStr f = map (StrSeq.filter f)
+
+--- Keep only Bytes in the ByteString stream passing a given predicate.
+filterBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString ByteString m ()
+filterBS f = map (BSSeq.filter f)
 
 --- Map values as long as the result is @Just@.
 mapWhile :: Monad m => (a -> Maybe b) -> ConduitT a b m ()
@@ -993,6 +1233,13 @@ chunksOfStr chunkSize = chunksOfExactlyStr chunkSize >> (await >>= maybe (return
 
 --- Split input into chunk of size 'chunkSize'
 ---
+--- The last element may be smaller than the 'chunkSize' (see also
+--- 'chunksOfExactlyBS' which will not yield this last element)
+chunksOfBS :: (Monad m) => Int -> ConduitT ByteString ByteString m ()
+chunksOfBS chunkSize = chunksOfExactlyBS chunkSize >> (await >>= maybe (return ()) yield)
+
+--- Split input into chunk of size 'chunkSize'
+---
 --- If the input does not split into chunks exactly, the remainder will be
 --- leftover (see also 'chunksOfE')
 chunksOfExactlyE :: (Monad m, Foldable f, ListView f, Monoid (f a)) => Int -> ConduitT (f a) (f a) m ()
@@ -1037,6 +1284,29 @@ chunksOfExactlyStr chunkSize = await >>= maybe (return ()) start
                             then continue sofar' bs'
                             else start (mconcat (Prelude.reverse bs'))
 
+--- Split input into chunk of size 'chunkSize'
+---
+--- If the input does not split into chunks exactly, the remainder will be
+--- leftover (see also 'chunksOfBS')
+chunksOfExactlyBS :: (Monad m) => Int -> ConduitT ByteString ByteString m ()
+chunksOfExactlyBS chunkSize = await >>= maybe (return ()) start
+    where
+        start b
+            | BSSeq.onull b = chunksOfBS chunkSize
+            | BSSeq.lengthIndex b < chunkSize = continue (BSSeq.lengthIndex b) [b]
+            | otherwise = let (first,rest) = BSSeq.splitAt chunkSize b in
+                            yield first >> start rest
+        continue !sofar bs = do
+            next <- await
+            case next of
+                Nothing -> leftover (mconcat $ Prelude.reverse bs)
+                Just next' ->
+                    let !sofar' = BSSeq.lengthIndex next' + sofar
+                        bs' = next':bs
+                    in if sofar' < chunkSize
+                            then continue sofar' bs'
+                            else start (mconcat (Prelude.reverse bs'))
+
 --- Apply a monadic transformation to all values in a stream.
 ---
 --- If you do not need the transformed values, and instead just want the monadic
@@ -1065,6 +1335,13 @@ omapME f = mapM (Seq.omapM f)
 omapMStr :: Monad m => (Char -> m Char) -> ConduitT String String m ()
 omapMStr f = mapM (StrSeq.omapM f)
 
+--- Apply a monadic monomorphic transformation to all Bytes in a ByteString stream.
+---
+--- Unlike @mapME@, this will work on types like @ByteString@ which is
+--- @MonoFunctor@ but not @Functor@.
+omapMBS :: Monad m => (Byte -> m Byte) -> ConduitT ByteString ByteString m ()
+omapMBS f = mapM (BSSeq.omapM f)
+
 --- Apply the monadic function to each value in the stream, resulting in a
 --- foldable value (e.g., a list). Then yield each of the individual values in
 --- that foldable value separately.
@@ -1079,6 +1356,13 @@ concatMapM f = awaitForever (lift . f >=> yieldMany)
 --- Generalizes concatMapM, mapMaybeM, and mapFoldableM.
 concatMapMStr :: Monad m => (a -> m String) -> ConduitT a Char m ()
 concatMapMStr f = awaitForever (lift . f >=> yieldManyStr)
+
+--- Apply the monadic function to each value in the stream, resulting in a
+--- ByteString. Then yield each of the individual Bytes in that ByteString separately.
+---
+--- Generalizes concatMapM, mapMaybeM, and mapFoldableM.
+concatMapMBS :: Monad m => (a -> m ByteString) -> ConduitT a Byte m ()
+concatMapMBS f = awaitForever (lift . f >=> yieldManyBS)
 
 --- Keep only values in the stream passing a given monadic predicate.
 filterM :: Monad m => (a -> m Bool) -> ConduitT a a m ()
@@ -1096,6 +1380,10 @@ filterME f = mapM (Seq.filterM f)
 --- Keep only Chars in the String stream passing a given monadic predicate.
 filterMStr :: Monad m => (Char -> m Bool) -> ConduitT String String m ()
 filterMStr f = mapM (StrSeq.filterM f)
+
+--- Keep only Bytes in the ByteString stream passing a given monadic predicate.
+filterMBS :: Monad m => (Byte -> m Bool) -> ConduitT ByteString ByteString m ()
+filterMBS f = mapM (BSSeq.filterM f)
 
 --- Apply a monadic action on all values in a stream.
 ---
