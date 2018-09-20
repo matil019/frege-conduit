@@ -1,6 +1,6 @@
 # frege-conduit
 
-An effort to port the haskell library [conduit][hackage-conduit] to Frege.
+An effort to port the Haskell library [conduit][hackage-conduit] to Frege.
 
 Please see [the excellent writeup][github-conduit] in the original repository
 for usage.
