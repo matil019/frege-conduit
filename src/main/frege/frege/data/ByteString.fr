@@ -1,0 +1,132 @@
+--- The immutable byte array.
+module frege.data.ByteString where
+
+import frege.Prelude hiding
+  ( !!
+  , drop
+  , empty
+  , freeze
+  , head
+  , last
+  , length
+  , null
+  , take
+  , tail
+  , thaw
+  )
+
+data ByteString = private Mk
+  { !payload :: JArray Byte
+  , !offset :: Int
+  , --- the number of effective bytes. not the length of the payload!
+    !length :: Int
+  }
+
+--- Copies the content of the @ByteString@ to the native @byte[]@ so that
+--- it can be used as mutable one.
+native thaw ByteString.thaw_ :: ByteString -> STMutable s (JArray Byte)
+
+--- Copies the content of the mutable @byte[]@ to @ByteString@.
+native freeze ByteString.freeze_ :: Mutable s (JArray Byte) -> ST s ByteString
+
+--- Wraps a native @byte[]@ into @ByteString@ without copying.
+---
+--- note: after applying this function, the wrapped array must *not* be modified!
+native unsafeFreeze ByteString.unsafeFreeze_ :: Mutable s (JArray Byte) -> ST s ByteString
+
+pure native (!!) ByteString.bangbang_ :: ByteString -> Int -> Byte
+
+drop :: Int -> ByteString -> ByteString
+drop n bs
+  | n <= 0 = bs
+  | n >= bs.length = empty
+  | otherwise = bs.{ offset <- (+n), length <- (\x -> x - n) }
+
+private pure native emptyArr ByteString.emptyArr_ :: JArray Byte
+
+empty :: ByteString
+!empty = ByteString.Mk { payload = emptyArr, offset = 0, length = 0 }
+
+head :: ByteString -> Byte
+head = (!! 0)
+
+last :: ByteString -> Byte
+last x = x !! (x.length - 1)
+
+length :: ByteString -> Int
+length = ByteString.length
+
+null :: ByteString -> Bool
+null = (==0) . length
+
+pack :: [Byte] -> ByteString
+pack x = packImpl x (Prelude.length x)
+
+private pure native packImpl ByteString.packImpl_ :: [Byte] -> Int -> ByteString
+
+pure native snoc ByteString.snoc_ :: ByteString -> Byte -> ByteString
+
+take :: Int -> ByteString -> ByteString
+take n bs
+  | n <= 0 = empty
+  | n >= bs.length = bs
+  | otherwise = bs.{ length = n }
+
+tail :: ByteString -> ByteString
+tail x
+  | null x = error "tail empty"
+  | otherwise = drop 1 x
+
+unpack :: ByteString -> [Byte]
+unpack x = map (x !!) [0..(length x)]
+
+native module where {
+  public static final byte[] thaw_(final TByteString bs) {
+    final byte[] arr = new byte[TByteString.length(bs)];
+    System.arraycopy(TByteString.payload(bs), TByteString.offset(bs), arr, 0, TByteString.length(bs));
+    return arr;
+  }
+
+  public static final Lazy<TByteString> freeze_(final byte[] arr) {
+    final byte[] payload = new byte[arr.length];
+    System.arraycopy(arr, 0, payload, 0, arr.length);
+    return Thunk.lazy(TByteString.mk(payload, 0, arr.length));
+  }
+
+  public static final Lazy<TByteString> unsafeFreeze_(final byte[] arr) {
+    return Thunk.lazy(TByteString.mk(arr, 0, arr.length));
+  }
+
+  // unless noted, byte[]s are treated as if immutable data.
+  // when copying is not needed, array instances may be shared.
+
+  public static final byte[] emptyArr_ = new byte[0];
+
+  public static final byte bangbang_(final TByteString bs, final int idx) {
+    if (idx >= TByteString.length(bs))
+      throw new IndexOutOfBoundsException(
+        "ByteString.!! length = " + TByteString.length(bs) + ", idx = " + idx);
+    return TByteString.payload(bs)[TByteString.offset(bs) + idx];
+  }
+
+  public static final TByteString packImpl_(PreludeBase.TList<Byte> l, final int len) {
+    final byte[] arr = new byte[len];
+    int idx = 0;
+    while (l.asList() != null) {
+      final PreludeBase.TList.DCons<Byte> cons = l.asCons();
+      assert cons != null;
+      final byte head = cons.mem1.call();
+      arr[idx] = head;
+      idx++;
+      l = cons.mem2.call();
+    }
+    return TByteString.mk(arr, 0, len);
+  }
+
+  public static final TByteString snoc_(final TByteString bs, final byte b) {
+    final int newlen = TByteString.length(bs) + 1;
+    final byte[] arr = new byte[newlen];
+    System.arraycopy(TByteString.payload(bs), TByteString.offset(bs), arr, 0, newlen);
+    return TByteString.mk(arr, 0, newlen);
+  }
+}
