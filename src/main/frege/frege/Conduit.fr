@@ -4,27 +4,151 @@ import frege.control.monad.trans.MonadIO public
 import frege.control.monad.trans.MonadTrans public
 import frege.data.Conduit as DC public
 import frege.data.conduit.Combinators as DCC
-  ( public concat      concatC
-  , public concatList  concatListC
-  , public concatMap   concatMapC
-  , public enumFromTo  enumFromToC
-  , public filter      filterC
-  , public filterM     filterMC
-  , public fold        foldC
-  , public foldM       foldMC
-  , public foldMapM    foldMapMC
-  , public foldl       foldlC
-  , public intersperse intersperseC
-  , public iterM       iterMC
-  , public length      lengthC
-  , public map         mapC
-  , public mapM        mapMC
-  , public mapM_       mapM_C
+  -- ** Producers
+  -- *** Pure
+  ( public yieldMany
+  , public unfold             unfoldC
+  , public enumFromTo         enumFromToC
+  , public iterate            iterateC
+  , public repeat             repeatC
+  , public replicate          replicateC
+
+  -- *** Monadic
+  , public repeatM            repeatMC
+  , public repeatWhileM       repeatWhileMC
+  , public replicateM         replicateMC
+
+  -- *** I\/O
+
+  -- *** Filesystem
+
+  -- ** Consumers
+  -- *** Pure
+  , public drop               dropC
+  , public dropE              dropCE
+  , public dropStr            dropCStr
+  , public dropWhile          dropWhileC
+  , public dropWhileE         dropWhileCE
+  , public dropWhileStr       dropWhileCStr
+  , public fold               foldC
+  , public foldE              foldCE
+  , public foldl              foldlC
+  , public foldlE             foldlCE
+  , public foldlStr           foldlCStr
+  , public foldMap            foldMapC
+  , public foldMapE           foldMapCE
+  , public foldMapStr         foldMapCStr
+  , public all                allC
+  , public allE               allCE
+  , public allStr             allCStr
+  , public any                anyC
+  , public anyE               anyCE
+  , public anyStr             anyCStr
+  , public and                andC
+  , public andE               andCE
+  , public or                 orC
+  , public orE                orCE
+  , public asum               asumC
+  , public elem               elemC
+  , public elemE              elemCE
+  , public elemStr            elemCStr
+  , public notElem            notElemC
+  , public notElemE           notElemCE
+  , public notElemStr         notElemCStr
   , public sinkList
+  , public sinkArrayList
   , public sinkNull
-  , public sum         sumC
-  , public take        takeC
-  , public takeWhile   takeWhileC
-  , public unlines     unlinesC
-  , public yieldMany
+  , public awaitNonNull
+  , public head               headC
+  , public headDef            headDefC
+  , public headE              headCE
+  , public headStr            headCStr
+  , public peek               peekC
+  , public peekE              peekCE
+  , public peekStr            peekCStr
+  , public last               lastC
+  , public lastDef            lastDefC
+  , public lastStr            lastCStr
+  , public length             lengthC
+  , public lengthStr          lengthCStr
+  , public lengthIf           lengthIfC
+  , public lengthIfE          lengthIfCE
+  , public lengthIfStr        lengthIfCStr
+  , public maximum            maximumC
+  , public maximumE           maximumCE
+  , public minimum            minimumC
+  , public minimumE           minimumCE
+  , public null               nullC
+  , public nullE              nullCE
+  , public nullStr            nullCStr
+  , public sum                sumC
+  , public sumE               sumCE
+  , public product            productC
+  , public productE           productCE
+  , public find               findC
+
+  -- *** Monadic
+  , public mapM_              mapM_C
+  , public mapM_E             mapM_CE
+  , public mapM_Str           mapM_CStr
+  , public foldM              foldMC
+  , public foldME             foldMCE
+  , public foldMStr           foldMCStr
+  , public foldMapM           foldMapMC
+  , public foldMapME          foldMapMCE
+  , public foldMapMStr        foldMapMCStr
+
+  -- *** I\/O
+
+  -- ** Transformers
+  -- *** Pure
+  , public map                mapC
+  , public mapE               mapCE
+  , public omapE              omapCE
+  , public omapStr            omapCStr
+  , public concatMap          concatMapC
+  , public concatMapE         concatMapCE
+  , public concatMapStr       concatMapCStr
+  , public take               takeC
+  , public takeE              takeCE
+  , public takeStr            takeCStr
+  , public takeWhile          takeWhileC
+  , public takeWhileE         takeWhileCE
+  , public takeWhileStr       takeWhileCStr
+  , public takeExactly        takeExactlyC
+  , public takeExactlyE       takeExactlyCE
+  , public takeExactlyStr     takeExactlyCStr
+  , public concat             concatC
+  , public concatList         concatListC
+  , public filter             filterC
+  , public filterE            filterCE
+  , public filterStr          filterCStr
+  , public mapWhile           mapWhileC
+  , public scanl              scanlC
+  , public mapAccumWhile      mapAccumWhileC
+  , public concatMapAccum     concatMapAccumC
+  , public intersperse        intersperseC
+  , public slidingWindow      slidingWindowC
+  , public chunksOfE          chunksOfCE
+  , public chunksOfStr        chunksOfCStr
+  , public chunksOfExactlyE   chunksOfExactlyCE
+  , public chunksOfExactlyStr chunksOfExactlyCStr
+
+  -- *** Monadic
+  , public mapM               mapMC
+  , public mapME              mapMCE
+  , public omapME             omapMCE
+  , public omapMStr           omapMCStr
+  , public concatMapM         concatMapMC
+  , public filterM            filterMC
+  , public filterME           filterMCE
+  , public filterMStr         filterMCStr
+  , public iterM              iterMC
+  , public scanlM             scanlMC
+  , public mapAccumWhileM     mapAccumWhileMC
+  , public concatMapAccumM    concatMapAccumMC
+
+  -- *** Textual
+  , public unlines            unlinesC
   )
+import frege.data.wrapper.Identity public
