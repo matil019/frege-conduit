@@ -15,6 +15,7 @@ module frege.data.conduit.internal.Sequence where
 
 import frege.Prelude hiding (all, any, elem, fold, notElem, splitAt)
 
+import frege.data.ByteString as BS (ByteString)
 import frege.data.Foldable (Foldable, all, any, elem, foldl', foldlM, notElem, traverse_)
 import frege.data.List ()
 import frege.data.Monoid (Monoid)
@@ -133,3 +134,60 @@ data StrSeq where
   uncons s
     | null s = Nothing
     | otherwise = Just (head s, strtail s 1)
+
+-- can (and should) be optimized so no Lists are constructed along the way
+data BSSeq where
+  dropWhile :: (Byte -> Bool) -> ByteString -> ByteString
+  dropWhile f ba =
+    maybe BS.empty (flip BS.drop ba) $
+    List.find (not . f . (ba BS.!!)) [0..(BS.length ba - 1)]
+  filter :: (Byte -> Bool) -> ByteString -> ByteString
+  filter f = BS.pack . Prelude.filter f . BS.unpack
+  filterM :: Monad m => (Byte -> m Bool) -> ByteString -> m ByteString
+  filterM f s = (BS.pack <$>) $ Prelude.filterM f $ BS.unpack s
+  fromNullable :: ByteString -> Maybe ByteString
+  fromNullable xs
+    | onull xs  = Nothing
+    | otherwise = Just xs
+  headMay :: ByteString -> Maybe Byte
+  headMay xs = fst <$> uncons xs
+  last :: ByteString -> Byte
+  last = BS.last
+  lengthIndex :: ByteString -> Int
+  lengthIndex = BS.length
+  oall :: (Byte -> Bool) -> ByteString -> Bool
+  oall f = all f . BS.unpack
+  oany :: (Byte -> Bool) -> ByteString -> Bool
+  oany f = any f . BS.unpack
+  oelem :: Byte -> ByteString -> Bool
+  oelem c = elem c . BS.unpack
+  ofoldMap :: Monoid m => (Byte -> m) -> ByteString -> m
+  ofoldMap f = foldMap f . BS.unpack
+  ofoldl' :: (a -> Byte -> a) -> a -> ByteString -> a
+  ofoldl' f z = Prelude.fold f z . BS.unpack
+  ofoldlM :: Monad m => (a -> Byte -> m a) -> a -> ByteString -> m a
+  ofoldlM f z = foldlM f z . BS.unpack
+  olength :: ByteString -> Int
+  olength = BS.length
+  omap :: (Byte -> Byte) -> ByteString -> ByteString
+  omap f = BS.pack . map f . BS.unpack
+  omapM :: Applicative m => (Byte -> m Byte) -> ByteString -> m ByteString
+  omapM f s = (BS.pack <$>) $ traverse f $ BS.unpack s
+  omapM_ :: Applicative m => (Byte -> m ()) -> ByteString -> m ()
+  omapM_ f = traverse_ f . BS.unpack
+  onotElem :: Byte -> ByteString -> Bool
+  onotElem c = notElem c . BS.unpack
+  onull :: ByteString -> Bool
+  onull = BS.null
+  snoc :: ByteString -> Byte -> ByteString
+  snoc = BS.snoc
+  span :: (Byte -> Bool) -> ByteString -> (ByteString, ByteString)
+  span f s = let (xl, yl) = Prelude.span f $ BS.unpack s in (BS.pack xl, BS.pack yl)
+  splitAt :: Int -> ByteString -> (ByteString, ByteString)
+  splitAt i s = (BS.take i s, BS.drop i s)
+  tail :: ByteString -> ByteString
+  tail = BS.tail
+  uncons :: ByteString -> Maybe (Byte, ByteString)
+  uncons x
+    | BS.null x = Nothing
+    | otherwise = Just (BS.head x, BS.tail x)
