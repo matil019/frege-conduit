@@ -169,6 +169,7 @@ zipSinks (ConduitT x0) (ConduitT y0) = ConduitT (\rest -> let
     NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (\() -> cx () >< cy ())
     NeedInput px cx  >< (y@Done{})       = NeedInput (\i -> px i >< y)    (\u -> cx u >< y)
     (x@Done{})       >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (\u -> x >< cy u)
+    _ >< _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
     in injectLeftovers (x0 Done) >< injectLeftovers (y0 Done))
 
 --- Combines two sources. The new source will stop producing once either
@@ -188,6 +189,7 @@ zipSources (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go srcx srcy) (x, y)
     go (NeedInput _ c) right = go (c ()) right
     go left (NeedInput _ c) = go left (c ())
+    go _ _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
     in go (left0 Done) (right0 Done))
 
 --- Combines two sources. The new source will stop producing once either
@@ -207,6 +209,7 @@ zipSourcesApp (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go srcx srcy) (x y)
     go (NeedInput _ c) right = go (c ()) right
     go left (NeedInput _ c) = go left (c ())
+    go _ _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
     in go (left0 Done) (right0 Done))
 
 --- Porting note: used in @ZipConduit@
@@ -228,6 +231,7 @@ zipConduitApp (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go (Done x) (NeedInput py cy) = NeedInput
         (\i -> go (Done x) (py i))
         (\u -> go (Done x) (cy u))
+    go _ _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
   in go (injectLeftovers $ left0 Done) (injectLeftovers $ right0 Done))
 
 --- A wrapper for defining an 'Applicative' instance for 'Source's which allows
