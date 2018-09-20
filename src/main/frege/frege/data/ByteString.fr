@@ -15,12 +15,18 @@ import frege.Prelude hiding
   , thaw
   )
 
+import frege.data.Monoid (Monoid)
+
 data ByteString = private Mk
   { !payload :: JArray Byte
   , !offset :: Int
   , --- the number of effective bytes. not the length of the payload!
     !length :: Int
   }
+
+instance Monoid ByteString where
+  mempty = empty
+  pure native mappend ByteString.mappend_ :: ByteString -> ByteString -> ByteString
 
 --- Copies the content of the @ByteString@ to the native @byte[]@ so that
 --- it can be used as mutable one.
@@ -107,6 +113,13 @@ native module where {
       throw new IndexOutOfBoundsException(
         "ByteString.!! length = " + TByteString.length(bs) + ", idx = " + idx);
     return TByteString.payload(bs)[TByteString.offset(bs) + idx];
+  }
+
+  public static final TByteString mappend_(final TByteString a, final TByteString b) {
+    final byte[] arr = new byte[TByteString.length(a) + TByteString.length(b)];
+    System.arraycopy(TByteString.payload(a), TByteString.offset(a), arr, 0, TByteString.length(a));
+    System.arraycopy(TByteString.payload(b), TByteString.offset(b), arr, TByteString.length(a), TByteString.length(b));
+    return TByteString.mk(arr, 0, TByteString.length(a) + TByteString.length(b));
   }
 
   public static final TByteString packImpl_(PreludeBase.TList<Byte> l, final int len) {

@@ -27,23 +27,29 @@ import frege.data.conduit.Combinators as DCC
   , public drop               dropC
   , public dropE              dropCE
   , public dropStr            dropCStr
+  , public dropBS             dropCBS
   , public dropWhile          dropWhileC
   , public dropWhileE         dropWhileCE
   , public dropWhileStr       dropWhileCStr
+  , public dropWhileBS        dropWhileCBS
   , public fold               foldC
   , public foldE              foldCE
   , public foldl              foldlC
   , public foldlE             foldlCE
   , public foldlStr           foldlCStr
+  , public foldlBS            foldlCBS
   , public foldMap            foldMapC
   , public foldMapE           foldMapCE
   , public foldMapStr         foldMapCStr
+  , public foldMapBS          foldMapCBS
   , public all                allC
   , public allE               allCE
   , public allStr             allCStr
+  , public allBS              allCBS
   , public any                anyC
   , public anyE               anyCE
   , public anyStr             anyCStr
+  , public anyBS              anyCBS
   , public and                andC
   , public andE               andCE
   , public or                 orC
@@ -52,9 +58,11 @@ import frege.data.conduit.Combinators as DCC
   , public elem               elemC
   , public elemE              elemCE
   , public elemStr            elemCStr
+  , public elemBS             elemCBS
   , public notElem            notElemC
   , public notElemE           notElemCE
   , public notElemStr         notElemCStr
+  , public notElemBS          notElemCBS
   , public sinkList
   , public sinkArrayList
   , public sinkNull
@@ -64,18 +72,23 @@ import frege.data.conduit.Combinators as DCC
   , public headDef            headDefC
   , public headE              headCE
   , public headStr            headCStr
+  , public headBS             headCBS
   , public peek               peekC
   , public peekE              peekCE
   , public peekStr            peekCStr
+  , public peekBS             peekCBS
   , public last               lastC
   , public lastDef            lastDefC
   , public lastE              lastCE
   , public lastStr            lastCStr
+  , public lastBS             lastCBS
   , public length             lengthC
   , public lengthStr          lengthCStr
+  , public lengthBS           lengthCBS
   , public lengthIf           lengthIfC
   , public lengthIfE          lengthIfCE
   , public lengthIfStr        lengthIfCStr
+  , public lengthIfBS         lengthIfCBS
   , public maximum            maximumC
   , public maximumE           maximumCE
   , public minimum            minimumC
@@ -83,6 +96,7 @@ import frege.data.conduit.Combinators as DCC
   , public null               nullC
   , public nullE              nullCE
   , public nullStr            nullCStr
+  , public nullBS             nullCBS
   , public sum                sumC
   , public sumE               sumCE
   , public product            productC
@@ -93,12 +107,15 @@ import frege.data.conduit.Combinators as DCC
   , public mapM_              mapM_C
   , public mapM_E             mapM_CE
   , public mapM_Str           mapM_CStr
+  , public mapM_BS            mapM_CBS
   , public foldM              foldMC
   , public foldME             foldMCE
   , public foldMStr           foldMCStr
+  , public foldMBS            foldMCBS
   , public foldMapM           foldMapMC
   , public foldMapME          foldMapMCE
   , public foldMapMStr        foldMapMCStr
+  , public foldMapMBS         foldMapMCBS
 
   -- *** I\/O
 
@@ -108,23 +125,29 @@ import frege.data.conduit.Combinators as DCC
   , public mapE               mapCE
   , public omapE              omapCE
   , public omapStr            omapCStr
+  , public omapBS             omapCBS
   , public concatMap          concatMapC
   , public concatMapE         concatMapCE
   , public concatMapStr       concatMapCStr
+  , public concatMapBS        concatMapCBS
   , public take               takeC
   , public takeE              takeCE
   , public takeStr            takeCStr
+  , public takeBS             takeCBS
   , public takeWhile          takeWhileC
   , public takeWhileE         takeWhileCE
   , public takeWhileStr       takeWhileCStr
+  , public takeWhileBS        takeWhileCBS
   , public takeExactly        takeExactlyC
   , public takeExactlyE       takeExactlyCE
   , public takeExactlyStr     takeExactlyCStr
+  , public takeExactlyBS      takeExactlyCBS
   , public concat             concatC
   , public concatList         concatListC
   , public filter             filterC
   , public filterE            filterCE
   , public filterStr          filterCStr
+  , public filterBS           filterCBS
   , public mapWhile           mapWhileC
   , public scanl              scanlC
   , public mapAccumWhile      mapAccumWhileC
@@ -133,18 +156,22 @@ import frege.data.conduit.Combinators as DCC
   , public slidingWindow      slidingWindowC
   , public chunksOfE          chunksOfCE
   , public chunksOfStr        chunksOfCStr
+  , public chunksOfBS         chunksOfCBS
   , public chunksOfExactlyE   chunksOfExactlyCE
   , public chunksOfExactlyStr chunksOfExactlyCStr
+  , public chunksOfExactlyBS  chunksOfExactlyCBS
 
   -- *** Monadic
   , public mapM               mapMC
   , public mapME              mapMCE
   , public omapME             omapMCE
   , public omapMStr           omapMCStr
+  , public omapMBS            omapMCBS
   , public concatMapM         concatMapMC
   , public filterM            filterMC
   , public filterME           filterMCE
   , public filterMStr         filterMCStr
+  , public filterMBS          filterMCBS
   , public iterM              iterMC
   , public scanlM             scanlMC
   , public mapAccumWhileM     mapAccumWhileMC
