@@ -6,6 +6,8 @@ import frege.data.Conduit as DC public
 import frege.data.conduit.Combinators as DCC
   ( public concat      concatC
   , public concatList  concatListC
+  , public concatMap   concatMapC
+  , public enumFromTo  enumFromToC
   , public filter      filterC
   , public filterM     filterMC
   , public fold        foldC
@@ -14,6 +16,7 @@ import frege.data.conduit.Combinators as DCC
   , public foldl       foldlC
   , public intersperse intersperseC
   , public iterM       iterMC
+  , public length      lengthC
   , public map         mapC
   , public mapM        mapMC
   , public mapM_       mapM_C

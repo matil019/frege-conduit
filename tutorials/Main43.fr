@@ -1,0 +1,16 @@
+module Main43 where
+
+import frege.Conduit
+import frege.data.Void (Void)
+
+doubles :: [Double]
+doubles = [1, 2, 3, 4, 5, 6]
+
+average :: Monad m => ConduitT Double Void m Double
+average =
+    ZipSink.get (go <$> ZipSink sumC <*> ZipSink lengthC)
+  where
+    go total len = total / fromIntegral (len :: Int)
+
+main :: IO ()
+main = println $ runConduitPure $ yieldMany doubles .| average

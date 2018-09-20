@@ -1,0 +1,15 @@
+module Main46 where
+
+import frege.Conduit
+
+fibs :: [Int]
+fibs = 0 : 1 : zipWith (+) fibs (drop 1 fibs)
+
+indexedFibs :: ConduitT () (Int, Int) IO ()
+indexedFibs = ZipSource.get
+    $ (,)
+  <$> ZipSource (yieldMany [1..])
+  <*> ZipSource (yieldMany fibs)
+
+main :: IO ()
+main = runConduit $ indexedFibs .| takeC 10 .| mapM_C println
