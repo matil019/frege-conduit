@@ -585,6 +585,17 @@ nullE =
     go = await >>= maybe (return True) go'
     go' x = if Seq.onull x then go else leftover x >> return False
 
+--- True if there are no Chars in the String stream.
+---
+--- This function may remove empty leading chunks from the stream, but otherwise
+--- will not modify it.
+nullStr :: Monad m => ConduitT String o m Bool
+nullStr =
+    go
+  where
+    go = await >>= maybe (return True) go'
+    go' x = if StrSeq.onull x then go else leftover x >> return False
+
 --- Get the sum of all values in the stream.
 sum :: (Monad m, Num a) => ConduitT a o m a
 sum = foldl (+) 0
