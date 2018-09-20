@@ -414,6 +414,16 @@ awaitNonNull =
 
     go' = maybe go (return . Just) . Seq.fromNullable
 
+--- The specialization of 'awaitNonNull' to a list in order to workaround javac
+--- compilation error (likely a Frege bug).
+awaitNonNullList :: Monad m => ConduitT [a] o m (Maybe [a])
+awaitNonNullList =
+    go
+  where
+    go = await >>= maybe (return Nothing) go'
+
+    go' = maybe go (return . Just) . Seq.fromNullable
+
 --- Same as @await@, but discards any leading empty Strings.
 awaitNonNullStr :: (Monad m) => ConduitT String o m (Maybe String)
 awaitNonNullStr =
@@ -500,13 +510,12 @@ last =
 lastDef :: Monad m => a -> ConduitT a o m a
 lastDef a = fromMaybe a <$> last
 
--- javac compilation error for some reason
--- --- | Retrieve the last element in the chunked stream, if present.
--- lastE :: (Monad m) => ConduitT [a] o m (Maybe a)
--- lastE =
---     awaitNonNull >>= maybe (return Nothing) (loop . Seq.last)
---   where
---     loop prev = awaitNonNull >>= maybe (return $ Just prev) (loop . Seq.last)
+--- | Retrieve the last element in the chunked stream, if present.
+lastE :: (Monad m) => ConduitT [a] o m (Maybe a)
+lastE =
+    awaitNonNullList >>= maybe (return Nothing) (loop . Seq.last)
+  where
+    loop prev = awaitNonNullList >>= maybe (return $ Just prev) (loop . Seq.last)
 
 --- Retrieve the last Char in the String stream, if present.
 lastStr :: Monad m => ConduitT String o m (Maybe Char)

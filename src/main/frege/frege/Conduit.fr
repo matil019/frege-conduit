@@ -59,6 +59,7 @@ import frege.data.conduit.Combinators as DCC
   , public sinkArrayList
   , public sinkNull
   , public awaitNonNull
+  , public awaitNonNullList
   , public head               headC
   , public headDef            headDefC
   , public headE              headCE
@@ -68,6 +69,7 @@ import frege.data.conduit.Combinators as DCC
   , public peekStr            peekCStr
   , public last               lastC
   , public lastDef            lastDefC
+  , public lastE              lastCE
   , public lastStr            lastCStr
   , public length             lengthC
   , public lengthStr          lengthCStr
