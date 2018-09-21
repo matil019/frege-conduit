@@ -19,6 +19,7 @@ import frege.data.conduit.Combinators as DCC
   , public replicateM         replicateMC
 
   -- *** I\/O
+  , public sourceFile
 
   -- *** Filesystem
 
@@ -118,6 +119,9 @@ import frege.data.conduit.Combinators as DCC
   , public foldMapMBS         foldMapMCBS
 
   -- *** I\/O
+  , public sinkFile
+  , public sinkOutputStream
+  , public sinkIOOutputStream
 
   -- ** Transformers
   -- *** Pure
