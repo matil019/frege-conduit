@@ -1,0 +1,34 @@
+module frege.data.conduit.internal.FileInput where
+
+import frege.Prelude hiding (FileInputStream, InputStream)
+
+import frege.data.ByteString as BS (ByteString)
+
+type FilePath = String
+
+data InputStream = native java.io.InputStream where
+    native read :: Mutable s InputStream -> ArrayOf s Byte -> ST s Int throws IOException
+
+type FileInputStream = MutableIO FileInputStream'
+data FileInputStream' = native java.io.FileInputStream where
+    native new :: FilePath -> IO FileInputStream throws FileNotFoundException
+
+    native close :: FileInputStream -> IO () throws IOException
+
+openFile :: FilePath -> IO FileInputStream
+openFile = FileInputStream.new
+
+closeFile :: FileInputStream -> IO ()
+closeFile = FileInputStream.close
+
+--- will return an empty @ByteString@ on EOF.
+readChunk :: MutableIO InputStream -> IO ByteString
+readChunk fis = do
+    let chunkSize = 1024 -- arbitrary chosen, should be optimized
+    arr <- newArray chunkSize
+    readBytes <- fis.read arr
+    if readBytes < 0
+    then pure BS.empty
+    else if readBytes == 0
+         then readChunk fis
+         else BS.unsafeFreezeWith arr 0 readBytes

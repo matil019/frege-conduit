@@ -1,0 +1,8 @@
+module Main34 where
+
+import frege.Conduit
+
+main :: IO ()
+main = withSourceFile "input.txt" $ \source ->
+       withSinkFile "output.txt" $ \sink ->
+       runConduit $ source .| sink

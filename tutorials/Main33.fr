@@ -1,0 +1,14 @@
+module Main33 where
+
+import frege.Conduit
+
+import frege.data.conduit.internal.FileInput as FI ()
+import frege.data.conduit.internal.FileOutput as FO ()
+
+withInputFile  fp use = FI.openFile fp >>= \is -> use is `finally` FI.closeFile is
+withOutputFile fp use = FO.openFile fp >>= \os -> use os `finally` FO.closeFile os
+
+main :: IO ()
+main = withInputFile "input.txt" $ \is ->
+       withOutputFile "output.txt" $ \os ->
+       runConduit $ sourceInputStream is .| sinkOutputStream os

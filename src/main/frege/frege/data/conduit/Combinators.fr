@@ -37,22 +37,30 @@ import frege.Prelude hiding
   , unlines
   )
 
+import frege.control.monad.io.Unlift (MonadUnliftIO)
+import frege.control.monad.trans.MonadIO (MonadIO)
 import frege.control.monad.trans.MonadTrans (lift)
-import frege.data.ByteString (ByteString)
+import frege.control.monad.trans.Resource (MonadResource)
+import frege.data.ByteString as S (ByteString)
 import frege.data.Conduit
   ( .|
   , ConduitT
   , await
   , awaitForever
+  , bracketP
   , leftover
   , yield
   )
+import frege.data.conduit.internal.FileInput as FI ()
+import frege.data.conduit.internal.FileOutput as FO ()
 import frege.data.conduit.internal.Sequence (BSSeq, Seq, StrSeq)
 import frege.data.Foldable (Foldable(), traverse_)
 import frege.data.List ()
 import frege.data.Monoid (Monoid, mappend)
 import frege.data.Traversable (Traversable())
 import frege.java.Util (ArrayList)
+
+type FilePath = String
 
 --- Yield each of the values contained by the given @Foldable@.
 yieldMany :: (Monad m, Foldable f) => f a -> ConduitT i a m ()
@@ -132,6 +140,40 @@ replicateM cnt0 ma =
         | i <= 0 = return ()
         | otherwise = lift ma >>= yield >> loop (i - 1)
 
+--- Stream the contents of a file as binary data.
+sourceFile :: MonadResource m => FilePath -> ConduitT i ByteString m ()
+sourceFile fp =
+    bracketP
+        (FI.openFile fp)
+        FI.closeFile
+        sourceInputStream
+
+--- Stream the content of an 'InputStream' as binary data. Note that this
+--- function will /not/ automatically close the @InputStream@ when procefssing
+--- completes, since it did not acquire the @InputStream@ in the first place.
+sourceInputStream :: MonadIO m
+                  => MutableIO FI.InputStream
+                  -> ConduitT i ByteString m ()
+sourceInputStream is =
+    loop
+  where
+    loop = do
+        bs <- liftIO (FI.readChunk is)
+        if S.null bs
+            then return ()
+            else yield bs >> loop
+
+--- Like 'IO.withBinaryFile' in Haskell, but provides a source to read bytes
+--- from.
+withSourceFile
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitT i ByteString n () -> m a)
+  -> m a
+withSourceFile fp inner =
+  withRunInIO $ \run ->
+  FI.openFile fp >>= \is ->
+  (run . inner . sourceInputStream) is `finally` FI.closeFile is
 
 --- Ignore a certain number of values in the stream.
 ---
@@ -842,6 +884,38 @@ foldMapMStr f = foldM (StrSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) m
 --- Bytes in the ByteString stream.
 foldMapMBS :: (Monad m, Monoid w) => (Byte -> m w) -> ConduitT ByteString o m w
 foldMapMBS f = foldM (BSSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mempty
+
+--- Stream all incoming data to the given file.
+sinkFile :: MonadResource m => FilePath -> ConduitT ByteString o m ()
+sinkFile fp = sinkIOOutputStream (FO.openFile fp)
+
+--- Stream all incoming data to the given 'OutputStream'. Note that this function
+--- does /not/ flush and will /not/ close the @Handle@ when processing completes.
+sinkOutputStream :: MonadIO m
+                 => MutableIO FO.OutputStream
+                 -> ConduitT ByteString o m ()
+sinkOutputStream os = awaitForever (liftIO . FO.writeBS os)
+
+--- An alternative to 'sinkOutputStream'.
+--- Instead of taking a pre-opened 'OutputStream', it takes an action that
+--- opens an 'OutputStream', so that it can open it only when needed and close
+--- it as soon as possible.
+sinkIOOutputStream :: MonadResource m
+                   => IOMutable FO.OutputStream
+                   -> ConduitT ByteString o m ()
+sinkIOOutputStream alloc = bracketP alloc FO.OutputStream.close sinkOutputStream
+
+--- Like 'IO.withBinaryFile' in Haskell, but provides a sink to write bytes
+--- to.
+withSinkFile
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitT ByteString o n () -> m a)
+  -> m a
+withSinkFile fp inner =
+  withRunInIO $ \run ->
+  FO.openFile fp >>= \os ->
+  (run . inner . sinkOutputStream) os `finally` FO.closeFile os
 
 --- Apply a transformation to all values in a stream.
 map :: Monad m => (a -> b) -> ConduitT a b m ()

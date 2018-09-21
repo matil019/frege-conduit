@@ -3,8 +3,11 @@
 --- <https://github.com/snoyberg/conduit#readme>.
 module frege.data.Conduit where
 
+import frege.control.monad.io.Unlift (MonadUnliftIO)
 import frege.control.monad.trans.MonadIO (MonadIO)
 import frege.control.monad.trans.MonadTrans (MonadTrans)
+import frege.control.monad.trans.Resource
+  (ResourceT, MonadResource, allocate, release, runResourceT)
 import frege.data.Monoid (Monoid)
 import frege.data.Void (Void, absurd)
 import frege.data.conduit.internal.Pipe
@@ -51,6 +54,12 @@ runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
 --- @Identity.run . runConduit@.
 runConduitPure :: ConduitT () Void Identity r -> r
 runConduitPure = Identity.run . runConduit
+
+--- Run a pipeline which acquires resources with @ResourceT@, and
+--- then run the @ResourceT@ transformer. This is equivalent to
+--- @runResourceT . runConduit@.
+runConduitRes :: MonadUnliftIO m => ConduitT () Void (ResourceT m) r -> m r
+runConduitRes = runResourceT . runConduit
 
 --- Named function synonym for '.|'.
 ---
@@ -137,6 +146,29 @@ awaitForever :: Monad m => (i -> ConduitT i o m r) -> ConduitT i o m ()
 awaitForever f = ConduitT (\rest ->
   let go = NeedInput (\i -> unConduitT (f i) (const go)) rest
    in go)
+
+--- Bracket a conduit computation between allocation and release of a
+--- resource. Two guarantees are given about resource finalization:
+---
+--- 1. It will be /prompt/. The finalization will be run as early as possible.
+---
+--- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
+--- be run in the event of any exceptions.
+---
+--- Parameters:
+--- - computation to run first (\"acquire resource\")
+--- - computation to run last (\"release resource\")
+--- - computation to run in-between
+--- Returns:
+--- - returns the value from the in-between computation
+bracketP :: MonadResource m => IO a -> (a -> IO ()) -> (a -> ConduitT i o m r)
+                            -> ConduitT i o m r
+bracketP alloc free inside = ConduitT (\rest -> do
+  (key, seed) <- allocate alloc free
+  unConduitT (inside seed) $ \res -> do
+    release key
+    rest res
+  )
 
 --- Apply a function to all the output values of a @ConduitT@.
 ---

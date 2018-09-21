@@ -1,0 +1,27 @@
+module frege.data.conduit.internal.FileOutput where
+
+import frege.Prelude hiding (FileOutputStream, OutputStream)
+import frege.data.ByteString as BS (ByteString)
+
+type FilePath = String
+
+data OutputStream = native java.io.OutputStream where
+    native close :: Mutable s OutputStream -> ST s () throws IOException
+    native write :: Mutable s OutputStream -> ArrayOf s Byte -> ST s () throws IOException
+
+type FileOutputStream = MutableIO FileOutputStream'
+data FileOutputStream' = native java.io.FileOutputStream where
+    native new :: FilePath -> Bool -> IO FileOutputStream throws FileNotFoundException
+
+--- Opens a file in write&trunc (and binary) mode.
+openFile :: FilePath -> IO FileOutputStream
+openFile fp = FileOutputStream.new fp False
+
+closeFile :: FileOutputStream -> IO ()
+closeFile = OutputStream.close
+
+writeBS :: Mutable s OutputStream -> ByteString -> ST s ()
+writeBS os bs = do
+    -- add and use something like "unsafeThaw" to avoid copying?
+    arr <- BS.thaw bs
+    os.write arr
