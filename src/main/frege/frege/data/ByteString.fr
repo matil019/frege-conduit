@@ -40,6 +40,17 @@ native freeze ByteString.freeze_ :: Mutable s (JArray Byte) -> ST s ByteString
 --- note: after applying this function, the wrapped array must *not* be modified!
 native unsafeFreeze ByteString.unsafeFreeze_ :: Mutable s (JArray Byte) -> ST s ByteString
 
+--- Wraps a part of a native @byte[]@ into @ByteString@ without copying.
+---
+--- note: after applying this function, the wrapped array must *not* be modified!
+---
+--- Parameters:
+--- - the array
+--- - the offset
+--- - the length
+native unsafeFreezeWith ByteString.unsafeFreezeWith_
+  :: Mutable s (JArray Byte) -> Int -> Int -> ST s ByteString
+
 pure native (!!) ByteString.bangbang_ :: ByteString -> Int -> Byte
 
 drop :: Int -> ByteString -> ByteString
@@ -101,6 +112,20 @@ native module where {
 
   public static final Lazy<TByteString> unsafeFreeze_(final byte[] arr) {
     return Thunk.lazy(TByteString.mk(arr, 0, arr.length));
+  }
+
+  public static final Lazy<TByteString> unsafeFreezeWith_(
+    final byte[] arr, final int offset, final int length
+  ) {
+    if (length < 0) {
+      throw new IllegalArgumentException("length < 0");
+    } else if (length >= arr.length + offset) {
+      throw new IllegalArgumentException("length >= arr.length + offset" +
+          ", length = " + length +
+          ", arr.length = " + arr.length +
+          ", offset = " + offset);
+    }
+    return Thunk.lazy(TByteString.mk(arr, offset, length));
   }
 
   // unless noted, byte[]s are treated as if immutable data.
