@@ -12,8 +12,11 @@ import frege.data.Monoid (Monoid)
 import frege.data.Void (Void, absurd)
 import frege.data.conduit.internal.Pipe
   ( Pipe
+  , generalizeUpstream
   , injectLeftovers
+  , pipeL
   , runPipe
+  , withUpstream
   )
 import frege.data.wrapper.Identity (Identity)
 
@@ -117,6 +120,43 @@ ConduitT left0 .| ConduitT right0 = ConduitT (\rest ->
             recurse = goLeft rp rc
      in goRight (left0 Done) (right0 Done)
     )
+
+--- Fuse two @ConduitT@s together, and provide the return value of both. Note
+--- that this will force the entire upstream @ConduitT@ to be run to produce the
+--- result value, even if the downstream terminates early.
+fuseBoth :: Monad m => ConduitT a b m r1 -> ConduitT b c m r2 -> ConduitT a c m (r1, r2)
+fuseBoth (ConduitT up) (ConduitT down) =
+    ConduitT (pipeL (up Done) (withUpstream $ generalizeUpstream $ down Done) >>=)
+
+--- Like 'fuseBoth', but does not force consumption of the @Producer@.
+--- In the case that the @Producer@ terminates, the result value is
+--- provided as a @Just@ value. If it does not terminate, then a
+--- @Nothing@ value is returned.
+---
+--- One thing to note here is that "termination" here only occurs if the
+--- @Producer@ actually yields a @Nothing@ value. For example, with the
+--- @Producer@ @mapM_ yield [1..5]@, if five values are requested, the
+--- @Producer@ has not yet terminated. Termination only occurs when the
+--- sixth value is awaited for and the @Producer@ signals termination.
+fuseBothMaybe :: Monad m
+              => ConduitT a b m r1
+              -> ConduitT b c m r2
+              -> ConduitT a c m (Maybe r1, r2)
+fuseBothMaybe (ConduitT up) (ConduitT down) =
+    ConduitT (pipeL (up Done) (go Nothing $ down Done) >>=)
+  where
+    go mup (Done r) = Done (mup, r)
+    go mup (PipeM mp) = PipeM $ liftM (go mup) mp
+    go mup (HaveOutput p o) = HaveOutput (go mup p) o
+    go _ (NeedInput p c) = NeedInput
+        (\i -> go Nothing (p i))
+        (\u -> go (Just u) (c ()))
+    go mup (Leftover p i) = Leftover (go mup p) i
+
+--- Same as @fuseBoth@, but ignore the return value from the downstream
+--- @Conduit@. Same caveats of forced consumption apply.
+fuseUpstream :: Monad m => ConduitT a b m r -> ConduitT b c m () -> ConduitT a c m r
+fuseUpstream up down = fmap fst (fuseBoth up down)
 
 --- Wait for a single input value from upstream. If no data is available,
 --- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will

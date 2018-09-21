@@ -40,6 +40,36 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
+--- This is similar to @await@, but will return the upstream result value as
+--- @Left@ if available.
+awaitE :: Pipe l i o u m (Either u i)
+awaitE = NeedInput (Done . Right) (Done . Left)
+
+--- Same as 'pipe', but automatically applies 'injectLeftovers' to the right @Pipe@.
+pipeL :: Monad m => Pipe l a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
+pipeL =
+    goRight
+  where
+    goRight left right =
+        case right of
+            HaveOutput p o    -> HaveOutput (recurse p) o
+            NeedInput rp rc   -> goLeft rp rc left
+            Done r2           -> Done r2
+            PipeM mp          -> PipeM (liftM recurse mp)
+            Leftover right' i -> goRight (HaveOutput left i) right'
+      where
+        recurse = goRight left
+
+    goLeft rp rc left =
+        case left of
+            HaveOutput left' o -> goRight left' (rp o)
+            NeedInput left' lc -> NeedInput (recurse . left') (recurse . lc)
+            Done r1            -> goRight (Done r1) (rc r1)
+            PipeM mp           -> PipeM (liftM recurse mp)
+            Leftover left' i   -> Leftover (recurse left') i
+      where
+        recurse = goLeft rp rc
+
 --- Run a pipeline until processing completes.
 runPipe :: Monad m => Pipe Void () Void () m r -> m r
 runPipe (HaveOutput _ o) = absurd o
@@ -64,3 +94,25 @@ injectLeftovers =
     go _ (Done r) = Done r
     go ls (PipeM mp) = PipeM (liftM (go ls) mp)
     go ls (Leftover p l) = go (l:ls) p
+
+--- Returns a tuple of the upstream and downstream results. Note that this
+--- will force consumption of the entire input stream.
+withUpstream :: Monad m => Pipe l i o u m r -> Pipe l i o u m (u, r)
+withUpstream down =
+    down >>= go
+  where
+    go r =
+        loop
+      where
+        loop = awaitE >>= either (\u -> return (u, r)) (\_ -> loop)
+
+--- Generalize the upstream return value for a @Pipe@ from unit to any type.
+generalizeUpstream :: Monad m => Pipe l i o () m r -> Pipe l i o u m r
+generalizeUpstream =
+    go
+  where
+    go (HaveOutput p o) = HaveOutput (go p) o
+    go (NeedInput x y)  = NeedInput (go . x) (\_ -> go (y ()))
+    go (Done r)         = Done r
+    go (PipeM mp)       = PipeM (liftM go mp)
+    go (Leftover p l)   = Leftover (go p) l
