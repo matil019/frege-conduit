@@ -28,10 +28,12 @@ import frege.Prelude hiding
   , notElem
   , null
   , or
+  , println
   , product
   , repeat
   , replicate, replicateM
   , scanl
+  , stderr, stdout
   , sum
   , take, takeWhile
   , unlines
@@ -54,6 +56,7 @@ import frege.data.Conduit
 import frege.data.conduit.internal.FileInput as FI ()
 import frege.data.conduit.internal.FileOutput as FO ()
 import frege.data.conduit.internal.Sequence (BSSeq, Seq, StrSeq)
+import frege.data.conduit.internal.StringCodec as SC ()
 import frege.data.Foldable (Foldable(), traverse_)
 import frege.data.List ()
 import frege.data.Monoid (Monoid, mappend)
@@ -905,6 +908,18 @@ sinkIOOutputStream :: MonadResource m
                    -> ConduitT ByteString o m ()
 sinkIOOutputStream alloc = bracketP alloc FO.OutputStream.close sinkOutputStream
 
+--- Print all incoming values to stdout.
+println :: (Show a, MonadIO m) => ConduitT a o m ()
+println = mapM_ (liftIO . Prelude.println)
+
+--- @sinkOutputStream@ applied to @System.out@.
+stdout :: MonadIO m => ConduitT ByteString o m ()
+stdout = sinkOutputStream System.out
+
+--- @sinkOutputStream@ applied to @System.err@.
+stderr :: MonadIO m => ConduitT ByteString o m ()
+stderr = sinkOutputStream System.err
+
 --- Like 'IO.withBinaryFile' in Haskell, but provides a sink to write bytes
 --- to.
 withSinkFile
@@ -1506,6 +1521,22 @@ mapAccumM f =
 --- 'concatMapM' with an accumulator.
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> ConduitT a b m ()
 concatMapAccumM f x0 = void (mapAccumM f x0) .| concatList
+
+--- Encode a stream of text as UTF8.
+encodeUtf8 :: Monad m => ConduitT String ByteString m ()
+encodeUtf8 = map SC.encodeUtf8
+
+--- Decode a stream of binary data as UTF8.
+---
+--- Porting note: does *not* throw an exception; currently, equivalent to
+--- 'decodeUtf8Lenient'.
+decodeUtf8 :: Monad m => ConduitT ByteString String m ()
+decodeUtf8 = decodeUtf8Lenient
+
+--- Decode a stream of binary data as UTF8, replacing any invalid bytes with
+--- the Unicode replacement character.
+decodeUtf8Lenient :: Monad m => ConduitT ByteString String m ()
+decodeUtf8Lenient = map SC.decodeUtf8
 
 --- Insert a newline character after each incoming chunk of data.
 unlines :: Monad m => ConduitT String String m ()

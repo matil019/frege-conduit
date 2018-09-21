@@ -1,0 +1,17 @@
+module frege.data.conduit.internal.StringCodec where
+
+import frege.data.ByteString as BS (ByteString)
+
+data Charset = pure native java.nio.charset.Charset
+
+pure native utf8 java.nio.charset.StandardCharsets.UTF_8 :: Charset
+
+native getBytes :: String -> Charset -> STMutable s (JArray Byte)
+pure native newString new :: JArray Byte -> Int -> Int -> Charset -> String
+
+encodeUtf8 :: String -> ByteString
+encodeUtf8 s = ST.run (BS.unsafeFreeze =<< getBytes s utf8)
+
+decodeUtf8 :: ByteString -> String
+decodeUtf8 (ByteString{payload, offset, length}) =
+    newString payload offset length utf8
