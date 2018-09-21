@@ -19,4 +19,4 @@ data Void
 --- > :}
 --- > 5
 absurd :: Void -> a
-absurd _ = undefined
+absurd = absurd
