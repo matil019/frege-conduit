@@ -1,0 +1,200 @@
+--- Ported from Haskell resourcet library
+--- Copyright   :  (C) Michael Snoyman
+--- License     :  BSD3
+-- TODO split into subproject
+-- TODO atomicity, thrown exception, and masking
+module frege.control.monad.trans.Resource where
+
+import frege.control.monad.io.Unlift (MonadUnliftIO)
+import frege.control.monad.trans.MonadIO (MonadIO)
+import frege.control.monad.trans.MonadTrans (MonadTrans)
+import frege.data.HashMap (HashMap)
+
+--- A @Monad@ which allows for safe resource allocation. In theory, any monad
+--- transformer stack which includes a @ResourceT@ can be an instance of
+--- @MonadResource@.
+---
+--- Note: @runResourceT@ has a requirement for a @MonadUnliftIO m@ monad,
+--- which allows control operations to be lifted. A @MonadResource@ does not
+--- have this requirement. This means that transformers such as @ContT@ can be
+--- an instance of @MonadResource@. However, the @ContT@ wrapper will need to be
+--- unwrapped before calling @runResourceT@.
+class MonadIO m => MonadResource m where
+    --- Lift a @ResourceT IO@ action into the current @Monad@.
+    liftResourceT :: ResourceT IO a -> m a
+
+data ResourceT m a = private Mk (IORef ReleaseMap -> m a)
+
+instance Functor m => Functor (ResourceT m) where
+    fmap f (ResourceT.Mk m) = ResourceT.Mk $ \r -> fmap f (m r)
+
+instance Applicative m => Applicative (ResourceT m) where
+    pure = ResourceT.Mk . const . pure
+    ResourceT.Mk mf <*> ResourceT.Mk ma = ResourceT.Mk $ \r ->
+        mf r <*> ma r
+
+instance Monad m => Monad (ResourceT m) where
+    ResourceT.Mk ma >>= f = ResourceT.Mk $ \r -> do
+        a <- ma r
+        let ResourceT.Mk f' = f a
+        f' r
+
+instance MonadIO m => MonadResource (ResourceT m) where
+    liftResourceT = transResourceT liftIO
+
+instance MonadTrans ResourceT where
+    lift = ResourceT.Mk . const
+
+instance MonadIO m => MonadIO (ResourceT m) where
+    liftIO = lift . liftIO
+
+--- Unwrap a 'ResourceT' transformer, and call all registered release actions.
+---
+--- Note that there is some reference counting involved.
+--- If multiple threads are sharing the same collection of resources, only the
+--- last call to @runResourceT@ will deallocate the resources.
+---
+--- Porting note: no effort is made to protect against multi-threading other
+--- than the conventional exception-safety, since there is nothing like @mask@
+--- in Frege.
+runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceT (ResourceT.Mk r) = withRunInIO $ \run -> do
+    istate <- createInternalState
+    res <- run (r istate) `catch` \e -> do
+        stateCleanupChecked (Just e) istate
+        throwIO e
+    stateCleanupChecked Nothing istate
+    return res
+
+--- Perform some allocation, and automatically register a cleanup action.
+---
+--- This is identical to calling the allocation and then @register@ing the
+--- release action, since there is no @mask@ing in Frege.
+allocate :: MonadResource m => IO a -> (a -> IO ()) -> m (ReleaseKey, a)
+allocate a = liftResourceT . allocateRIO a
+
+private allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
+private allocateRIO acquire rel = ResourceT.Mk $ \istate -> liftIO $ do
+    a <- acquire
+    key <- register' istate $ rel a
+    return (key, a)
+
+private register' :: IORef ReleaseMap -> IO () -> IO ReleaseKey
+private register' istate rel = do
+    rm <- istate.get
+    (rm', key) <- case rm of
+        ReleaseMap key rf m ->
+            pure ( ReleaseMap (key - 1) rf (HashMap.insert key (const rel) m)
+                 , ReleaseKey istate key
+                 )
+        ReleaseMapClosed -> fail "register'"
+    istate.put rm'
+    pure key
+
+--- Call a release action early, and deregister it from the list of cleanup
+--- actions to be performed.
+release :: MonadIO m => ReleaseKey -> m ()
+release (ReleaseKey istate rk) = liftIO $ release' istate rk
+    (maybe (return ()) id)
+
+private release' :: IORef ReleaseMap -> Int -> (Maybe (IO ()) -> IO a) -> IO a
+private release' istate key act = do
+    rm <- istate.get
+    let (rm', maction) = lookupAction rm
+    istate.put rm
+    act maction
+  where
+    lookupAction (rm@(ReleaseMap next rf m)) =
+        case HashMap.lookup key m of
+            Nothing -> (rm, Nothing)
+            Just action ->
+                ( ReleaseMap next rf $ HashMap.delete key m
+                , Just (action ReleaseEarly)
+                )
+    -- We tried to call release, but since the state is already closed, we
+    -- can assume that the release action was already called.
+    lookupAction ReleaseMapClosed = (ReleaseMapClosed, Nothing)
+
+--- Transform the monad a @ResourceT@ lives in. This is most often used to
+--- strip or add new transformers to a stack, e.g. to run a @ReaderT@.
+---
+--- Note that this function is a slight generalization of 'hoist'.
+transResourceT :: (m a -> n b) -> ResourceT m a -> ResourceT n b
+transResourceT f (ResourceT.Mk mx) = ResourceT.Mk (\r -> f (mx r))
+
+
+type IntMap = HashMap Int
+
+--- A lookup key for a specific release action. This value is returned by
+--- 'register' and 'allocate', and is passed to 'release'.
+data ReleaseKey = ReleaseKey !(IORef ReleaseMap) !Int
+
+type RefCount = Int
+type NextKey = Int
+
+--- The way in which a release is called.
+data ReleaseType = ReleaseEarly
+                 | ReleaseNormal
+                 | ReleaseException
+
+data ReleaseMap
+  = ReleaseMap !NextKey !RefCount !(IntMap (ReleaseType -> IO ()))
+  | ReleaseMapClosed
+
+--- The internal state held by a @ResourceT@ transformer.
+type InternalState = IORef ReleaseMap
+
+--- Create a new internal state. This state must be closed with
+--- @closeInternalState@. It is your responsibility to ensure exception safety.
+--- Caveat emptor!
+createInternalState :: MonadIO m => m InternalState
+createInternalState = liftIO
+                    $ IORef.new
+                    $ ReleaseMap maxBound (minBound + 1) IntMap.empty
+
+--- Clean up a release map, but throw an exception if anything goes wrong in the
+--- cleanup handlers.
+---
+--- Porting note: TODO define what exception is thrown; currently calls 'fail'
+--- Porting note: TODO add thread-safety (i.e. atomic IORef ops)
+stateCleanupChecked
+  :: Maybe Exception -- ^ exception that killed the 'ResourceT', if present
+  -> IORef ReleaseMap -> IO ()
+stateCleanupChecked morig istate = do
+    mm <- do
+        rm <- istate.get
+        (rm', mm) <- case rm of
+            ReleaseMap nk rf m ->
+                let rf' = rf - 1
+                 in if rf' == minBound
+                        then pure (ReleaseMapClosed, Just m)
+                        else pure (ReleaseMap nk rf' m, Nothing)
+            ReleaseMapClosed -> fail "stateCleanupChecked"
+        istate.put rm'
+        pure mm
+    case mm of
+        Just m -> do
+            res <- mapMaybeReverseM (\x -> try (x rtype)) $ HashMap.values m
+            case res of
+                [] -> return () -- nothing went wrong
+                -- e:es -> E.throwIO $ ResourceCleanupException morig e es
+                _  -> fail "exception thrown during cleanup"
+        Nothing -> return ()
+  where
+    try :: IO () -> IO (Maybe Exception)
+    try io = fmap (either Just (\() -> Nothing)) (catchAll io)
+
+    rtype = maybe ReleaseNormal (const ReleaseException) morig
+
+-- Note that this returns values in reverse order, which is what we
+-- want in the specific case of this function.
+private mapMaybeReverseM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
+private mapMaybeReverseM f =
+    go []
+  where
+    go bs [] = return bs
+    go bs (a:as) = do
+      mb <- f a
+      case mb of
+        Nothing -> go bs as
+        Just b -> go (b:bs) as
