@@ -17,7 +17,7 @@ import frege.Prelude hiding
 
 import frege.data.Monoid (Monoid)
 
-data ByteString = private Mk
+data ByteString = ByteString
   { !payload :: JArray Byte
   , !offset :: Int
   , --- the number of effective bytes. not the length of the payload!
@@ -62,7 +62,7 @@ drop n bs
 private pure native emptyArr ByteString.emptyArr_ :: JArray Byte
 
 empty :: ByteString
-!empty = ByteString.Mk { payload = emptyArr, offset = 0, length = 0 }
+!empty = ByteString { payload = emptyArr, offset = 0, length = 0 }
 
 head :: ByteString -> Byte
 head = (!! 0)
@@ -71,7 +71,7 @@ last :: ByteString -> Byte
 last x = x !! (x.length - 1)
 
 length :: ByteString -> Int
-length (ByteString.Mk{length = x}) = x
+length (ByteString{length = x}) = x
 
 null :: ByteString -> Bool
 null = (==0) . length

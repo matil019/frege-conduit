@@ -125,6 +125,9 @@ import frege.data.conduit.Combinators as DCC
   , public sinkFile
   , public sinkOutputStream
   , public sinkIOOutputStream
+  , public println            printlnC
+  , public stdout             stdoutC
+  , public stderr             stderrC
   , public withSinkFile
 
   -- ** Transformers
@@ -186,6 +189,9 @@ import frege.data.conduit.Combinators as DCC
   , public concatMapAccumM    concatMapAccumMC
 
   -- *** Textual
+  , public encodeUtf8         encodeUtf8C
+  , public decodeUtf8         decodeUtf8C
+  , public decodeUtf8Lenient  decodeUtf8LenientC
   , public unlines            unlinesC
   )
 import frege.data.wrapper.Identity public

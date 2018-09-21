@@ -1,0 +1,9 @@
+module Main41 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| takeCBS 5
+    .| stdoutC
