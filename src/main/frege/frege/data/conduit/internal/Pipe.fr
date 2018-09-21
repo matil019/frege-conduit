@@ -1,5 +1,8 @@
 module frege.data.conduit.internal.Pipe where
 
+import frege.control.monad.trans.MonadIO (MonadIO)
+import frege.control.monad.trans.MonadTrans (MonadTrans)
+import frege.control.monad.trans.Resource (MonadResource)
 import frege.data.Void (Void, absurd)
 
 data Pipe l i o u (m :: * -> *) r =
@@ -18,6 +21,24 @@ data Pipe l i o u (m :: * -> *) r =
     PipeM (m (Pipe l i o u m r))
   | --- Return leftover input, which should be provided to future operations.
     Leftover (Pipe l i o u m r) l
+
+instance Monad m => Monad (Pipe l i o u m) where
+    pure = Done
+
+    HaveOutput p o  >>= fp = HaveOutput (p >>= fp)            o
+    NeedInput p c   >>= fp = NeedInput  (p >=> fp)            (c >=> fp)
+    Done x          >>= fp = fp x
+    PipeM mp        >>= fp = PipeM      ((>>= fp) `liftM` mp)
+    Leftover p i    >>= fp = Leftover   (p >>= fp)            i
+
+instance MonadTrans (Pipe l i o u) where
+    lift mr = PipeM (Done `liftM` mr)
+
+instance MonadIO m => MonadIO (Pipe l i o u m) where
+    liftIO = lift . liftIO
+
+instance MonadResource m => MonadResource (Pipe l i o u m) where
+    liftResourceT = lift . liftResourceT
 
 --- Run a pipeline until processing completes.
 runPipe :: Monad m => Pipe Void () Void () m r -> m r
