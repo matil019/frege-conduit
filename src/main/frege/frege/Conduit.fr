@@ -87,6 +87,7 @@ import frege.data.conduit.Combinators as DCC
   , public lastStr            lastCStr
   , public lastBS             lastCBS
   , public length             lengthC
+  , public lengthE            lengthCE
   , public lengthStr          lengthCStr
   , public lengthBS           lengthCBS
   , public lengthIf           lengthIfC
@@ -192,6 +193,13 @@ import frege.data.conduit.Combinators as DCC
   , public encodeUtf8         encodeUtf8C
   , public decodeUtf8         decodeUtf8C
   , public decodeUtf8Lenient  decodeUtf8LenientC
+  , public line               lineC
   , public unlines            unlinesC
+
+  -- ** Special
+  , public peekForever
+  , public peekForeverE
+  , public peekForeverStr
+  , public peekForeverBS
   )
 import frege.data.wrapper.Identity public

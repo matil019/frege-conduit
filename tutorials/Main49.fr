@@ -1,0 +1,15 @@
+module Main49 where
+
+import frege.Conduit
+
+withFiveSum :: Monad m => ConduitT Int o m r -> ConduitT Int o m (r, Int)
+withFiveSum inner = do
+    r <- takeC 5 .| do
+        r <- inner
+        sinkNull
+        return r
+    s <- sumC
+    return (r, s)
+
+main :: IO ()
+main = println $ runConduitPure $ yieldMany [1..10] .| withFiveSum (return ())

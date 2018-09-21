@@ -22,6 +22,10 @@ import frege.data.Monoid (Monoid)
 import frege.data.Traversable (Traversable, traverse)
 
 data Seq where
+  break :: (a -> Bool) -> [a] -> ([a], [a])
+  break = Prelude.break
+  drop :: Int -> [a] -> [a]
+  drop = Prelude.drop
   dropWhile :: (a -> Bool) -> [a] -> [a]
   dropWhile = Prelude.dropWhile
   filter :: (a -> Bool) -> [a] -> [a]
@@ -77,6 +81,10 @@ data Seq where
 
 -- can (and should) be optimized so no Lists are constructed along the way
 data StrSeq where
+  break :: (Char -> Bool) -> String -> (String, String)
+  break f = StrSeq.span (not . f)
+  drop :: Int -> String -> String
+  drop = flip strtail
   dropWhile :: (Char -> Bool) -> String -> String
   dropWhile f s =
     maybe "" (strtail s) $
@@ -137,6 +145,10 @@ data StrSeq where
 
 -- can (and should) be optimized so no Lists are constructed along the way
 data BSSeq where
+  break :: (Byte -> Bool) -> ByteString -> (ByteString, ByteString)
+  break f = BSSeq.span (not . f)
+  drop :: Int -> ByteString -> ByteString
+  drop = BS.drop
   dropWhile :: (Byte -> Bool) -> ByteString -> ByteString
   dropWhile f ba =
     maybe BS.empty (flip BS.drop ba) $

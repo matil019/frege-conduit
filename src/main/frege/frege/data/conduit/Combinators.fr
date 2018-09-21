@@ -1538,6 +1538,151 @@ decodeUtf8 = decodeUtf8Lenient
 decodeUtf8Lenient :: Monad m => ConduitT ByteString String m ()
 decodeUtf8Lenient = map SC.decodeUtf8
 
+--- Stream in the entirety of a single line.
+---
+--- Like @takeExactly@, this will consume the entirety of the line regardless of
+--- the behavior of the inner Conduit.
+line :: Monad m => ConduitT String o m r -> ConduitT String o m r
+line = takeExactlyUntilStr (== '\n')
+
 --- Insert a newline character after each incoming chunk of data.
 unlines :: Monad m => ConduitT String String m ()
 unlines = concatMap (:["\n"])
+
+--- Stream in the chunked input until an element matches a predicate.
+---
+--- Like @takeExactly@, this will consume the entirety of the prefix
+--- regardless of the behavior of the inner Conduit.
+takeExactlyUntilE :: Monad m
+                  => (a -> Bool)
+                  -> ConduitT [a] o m r
+                  -> ConduitT [a] o m r
+takeExactlyUntilE f inner =
+    loop .| do
+        x <- inner
+        sinkNull
+        return x
+  where
+    loop = await >>= Seq.omapM_ go
+    go t =
+        if Seq.onull y
+            then yield x >> loop
+            else do
+                unless (Seq.onull x) $ yield x
+                let y' = Seq.drop 1 y
+                unless (Seq.onull y') $ leftover y'
+      where
+        (x, y) = Seq.break f t
+
+--- Stream in the String input until a Char matches a predicate.
+---
+--- Like @takeExactly@, this will consume the entirety of the prefix
+--- regardless of the behavior of the inner Conduit.
+takeExactlyUntilStr :: Monad m
+                    => (Char -> Bool)
+                    -> ConduitT String o m r
+                    -> ConduitT String o m r
+takeExactlyUntilStr f inner =
+    loop .| do
+        x <- inner
+        sinkNull
+        return x
+  where
+    loop = await >>= Seq.omapM_ go
+    go t =
+        if StrSeq.onull y
+            then yield x >> loop
+            else do
+                unless (StrSeq.onull x) $ yield x
+                let y' = StrSeq.drop 1 y
+                unless (StrSeq.onull y') $ leftover y'
+      where
+        (x, y) = StrSeq.break f t
+
+--- Stream in the ByteString input until a Byte matches a predicate.
+---
+--- Like @takeExactly@, this will consume the entirety of the prefix
+--- regardless of the behavior of the inner Conduit.
+takeExactlyUntilBS :: Monad m
+                    => (Byte -> Bool)
+                    -> ConduitT ByteString o m r
+                    -> ConduitT ByteString o m r
+takeExactlyUntilBS f inner =
+    loop .| do
+        x <- inner
+        sinkNull
+        return x
+  where
+    loop = await >>= Seq.omapM_ go
+    go t =
+        if BSSeq.onull y
+            then yield x >> loop
+            else do
+                unless (BSSeq.onull x) $ yield x
+                let y' = BSSeq.drop 1 y
+                unless (BSSeq.onull y') $ leftover y'
+      where
+        (x, y) = BSSeq.break f t
+
+--- Run a consuming conduit repeatedly, only stopping when there is no more
+--- data available from upstream.
+peekForever :: Monad m => ConduitT i o m () -> ConduitT i o m ()
+peekForever inner =
+    loop
+  where
+    loop = do
+        mx <- peek
+        case mx of
+            Nothing -> return ()
+            Just _ -> inner >> loop
+
+--- Run a consuming conduit repeatedly, only stopping when there is no more
+--- data available from upstream.
+---
+--- In constrast to 'peekForever', this function will ignore empty
+--- chunks of data. So for example, if a stream of data contains an
+--- empty @ByteString@, it is still treated as empty, and the consuming
+--- function is not called.
+peekForeverE :: (Monad m, ListView f) => ConduitT (f a) o m () -> ConduitT (f a) o m ()
+peekForeverE inner =
+    loop
+  where
+    loop = do
+        mx <- peekE
+        case mx of
+            Nothing -> return ()
+            Just _ -> inner >> loop
+
+--- Run a consuming conduit repeatedly, only stopping when there is no more
+--- data available from upstream.
+---
+--- In constrast to 'peekForever', this function will ignore empty
+--- Strings. So for example, if a stream of data contains an
+--- empty @String@, it is still treated as empty, and the consuming
+--- function is not called.
+peekForeverStr :: Monad m => ConduitT String o m () -> ConduitT String o m ()
+peekForeverStr inner =
+    loop
+  where
+    loop = do
+        mx <- peekStr
+        case mx of
+            Nothing -> return ()
+            Just _ -> inner >> loop
+
+--- Run a consuming conduit repeatedly, only stopping when there is no more
+--- data available from upstream.
+---
+--- In constrast to 'peekForever', this function will ignore empty
+--- ByteStrings. So for example, if a stream of data contains an
+--- empty @ByteString@, it is still treated as empty, and the consuming
+--- function is not called.
+peekForeverBS :: Monad m => ConduitT ByteString o m () -> ConduitT ByteString o m ()
+peekForeverBS inner =
+    loop
+  where
+    loop = do
+        mx <- peekBS
+        case mx of
+            Nothing -> return ()
+            Just _ -> inner >> loop

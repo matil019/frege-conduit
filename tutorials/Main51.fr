@@ -1,0 +1,8 @@
+module Main51 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduitRes $ sourceFile "input.txt" .| decodeUtf8C .| do
+    len <- lineC lengthCStr
+    liftIO $ println (len :: Int)
