@@ -1,0 +1,11 @@
+module Main38 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| decodeUtf8C
+    .| mapC (_.toUpperCase)
+    .| encodeUtf8C
+    .| stdoutC
