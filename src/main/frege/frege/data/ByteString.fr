@@ -60,7 +60,7 @@ last :: ByteString -> Byte
 last x = x !! (x.length - 1)
 
 length :: ByteString -> Int
-length = ByteString.length
+length (ByteString.Mk{length = x}) = x
 
 null :: ByteString -> Bool
 null = (==0) . length
