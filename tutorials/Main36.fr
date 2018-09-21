@@ -1,0 +1,6 @@
+module Main36 where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduitRes $ sourceFile "input.txt" .| sinkFile "output.txt"

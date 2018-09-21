@@ -1,0 +1,23 @@
+module Main35 where
+
+import frege.Conduit
+import frege.data.ByteString (ByteString)
+
+import frege.data.conduit.internal.FileInput as FI ()
+import frege.data.conduit.internal.FileOutput as FO ()
+
+type FilePath = String
+
+sourceFile' :: MonadResource m => FilePath -> ConduitT i ByteString m ()
+sourceFile' fp =
+    bracketP (FI.openFile fp) FI.closeFile sourceInputStream
+
+sinkFile' :: MonadResource m => FilePath -> ConduitT ByteString o m ()
+sinkFile' fp =
+    bracketP (FO.openFile fp) FO.closeFile sinkOutputStream
+
+main :: IO ()
+main = runResourceT
+     $ runConduit
+     $ sourceFile' "input.txt"
+    .| sinkFile' "output.txt"

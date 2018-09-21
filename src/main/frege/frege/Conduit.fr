@@ -2,6 +2,7 @@ module frege.Conduit where
 
 import frege.control.monad.trans.MonadIO public
 import frege.control.monad.trans.MonadTrans public
+import frege.control.monad.trans.Resource (public MonadResource, public runResourceT)
 import frege.data.Conduit as DC public
 import frege.data.conduit.Combinators as DCC
   -- ** Producers
@@ -20,6 +21,8 @@ import frege.data.conduit.Combinators as DCC
 
   -- *** I\/O
   , public sourceFile
+  , public sourceInputStream
+  , public withSourceFile
 
   -- *** Filesystem
 
@@ -122,6 +125,7 @@ import frege.data.conduit.Combinators as DCC
   , public sinkFile
   , public sinkOutputStream
   , public sinkIOOutputStream
+  , public withSinkFile
 
   -- ** Transformers
   -- *** Pure
