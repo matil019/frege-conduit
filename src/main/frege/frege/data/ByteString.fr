@@ -10,6 +10,7 @@ import frege.Prelude hiding
   , last
   , length
   , null
+  , splitAt
   , take
   , tail
   , thaw
@@ -82,6 +83,9 @@ pack x = packImpl x (Prelude.length x)
 private pure native packImpl ByteString.packImpl_ :: [Byte] -> Int -> ByteString
 
 pure native snoc ByteString.snoc_ :: ByteString -> Byte -> ByteString
+
+splitAt :: Int -> ByteString -> (ByteString, ByteString)
+splitAt i bs = (take i bs, drop i bs)
 
 take :: Int -> ByteString -> ByteString
 take n bs
