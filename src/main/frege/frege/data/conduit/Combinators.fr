@@ -1563,6 +1563,74 @@ line = takeExactlyUntilStr (== '\n')
 unlines :: Monad m => ConduitT String String m ()
 unlines = concatMap (:["\n"])
 
+{--
+ - Split a stream of arbitrarily-chunked String, based on a predicate
+ - on Chars.  Chars that satisfy the predicate will cause chunks
+ - to be split, and aren't included in these output chunks.  Note
+ - that, if you have unknown or untrusted input, this function is
+ - /unsafe/, since it would allow an attacker to form chunks of
+ - massive length and exhaust memory.
+ -}
+splitOnUnboundedStr :: Monad m => (Char -> Bool) -> ConduitT String String m ()
+splitOnUnboundedStr f =
+    start
+  where
+    start = await >>= maybe (return ()) (loop id)
+
+    loop bldr t =
+        if StrSeq.onull y
+            then do
+                mt <- await
+                case mt of
+                    Nothing -> let finalChunk = mconcat $ bldr [t]
+                               in  unless (StrSeq.onull finalChunk) $ yield finalChunk
+                    Just t' -> loop (bldr . (t:)) t'
+            else yield (mconcat $ bldr [x]) >> loop id (StrSeq.drop 1 y)
+      where
+        (x, y) = StrSeq.break f t
+
+{--
+ - Same as 'splitOnUnboundedStr', but for @ByteString@.
+ -}
+splitOnUnboundedBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString ByteString m ()
+splitOnUnboundedBS f =
+    start
+  where
+    start = await >>= maybe (return ()) (loop id)
+
+    loop bldr t =
+        if BSSeq.onull y
+            then do
+                mt <- await
+                case mt of
+                    Nothing -> let finalChunk = mconcat $ bldr [t]
+                               in  unless (BSSeq.onull finalChunk) $ yield finalChunk
+                    Just t' -> loop (bldr . (t:)) t'
+            else yield (mconcat $ bldr [x]) >> loop id (BSSeq.drop 1 y)
+      where
+        (x, y) = BSSeq.break f t
+
+{--
+ - Convert a stream of arbitrarily-chunked textual data into a stream of data
+ - where each chunk represents a single line. Note that, if you have
+ - unknown or untrusted input, this function is /unsafe/, since it would allow an
+ - attacker to form lines of massive length and exhaust memory.
+ -
+ - Porting note: chunk type specialized to @String@, whereas the original takes
+ - any sequence whose element is @Char@.
+ -}
+linesUnbounded :: Monad m => ConduitT String String m ()
+linesUnbounded = splitOnUnboundedStr (== '\n')
+
+{--
+ - Same as 'linesUnbounded', bot for ASCII/binary data.
+ -
+ - Porting note: chunk type specialized to @ByteString@, whereas the original takes
+ - any sequence whose element is @Word8@.
+ -}
+linesUnboundedAscii :: Monad m => ConduitT ByteString ByteString m ()
+linesUnboundedAscii = splitOnUnboundedBS (== 10)
+
 --- Stream in the chunked input until an element matches a predicate.
 ---
 --- Like @takeExactly@, this will consume the entirety of the prefix
