@@ -195,7 +195,9 @@ import frege.data.conduit.Combinators as DCC
   , public decodeUtf8         decodeUtf8C
   , public decodeUtf8Lenient  decodeUtf8LenientC
   , public line               lineC
+  , public lineAscii          lineAsciiC
   , public unlines            unlinesC
+  , public unlinesAscii       unlinesAsciiC
   , public linesUnbounded     linesUnboundedC
   , public linesUnboundedAscii linesUnboundedAsciiC
 

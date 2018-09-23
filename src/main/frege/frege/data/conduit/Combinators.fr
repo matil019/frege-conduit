@@ -1559,9 +1559,17 @@ decodeUtf8Lenient = SC.decodeUtf8Streaming
 line :: Monad m => ConduitT String o m r -> ConduitT String o m r
 line = takeExactlyUntilStr (== '\n')
 
+--- Same as 'line', but operates on ASCII/binary data.
+lineAscii :: Monad m => ConduitT ByteString o m r -> ConduitT ByteString o m r
+lineAscii = takeExactlyUntilBS (== 10)
+
 --- Insert a newline character after each incoming chunk of data.
 unlines :: Monad m => ConduitT String String m ()
 unlines = concatMap (:["\n"])
+
+--- Same as 'unlines', but operates on ASCII/binary data.
+unlinesAscii :: Monad m => ConduitT ByteString ByteString m ()
+unlinesAscii = concatMap (:[S.singleton 10])
 
 {--
  - Split a stream of arbitrarily-chunked String, based on a predicate
