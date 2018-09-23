@@ -1,11 +1,11 @@
 module frege.data.conduit.internal.StringCodec where
 
-import frege.control.monad.trans.MonadTrans (lift)
 import frege.data.ByteString as BS (ByteString)
 import frege.data.Conduit (ConduitT, await, leftover, yield)
+import frege.data.List (find)
+import frege.data.Monoid (mappend)
 
-data Charset = pure native java.nio.charset.Charset where
-  native newDecoder :: Charset -> STMutable s CharsetDecoder
+data Charset = pure native java.nio.charset.Charset
 
 pure native utf8 java.nio.charset.StandardCharsets.UTF_8 :: Charset
 
@@ -15,64 +15,42 @@ pure native newString new :: JArray Byte -> Int -> Int -> Charset -> String
 encodeUtf8 :: String -> ByteString
 encodeUtf8 s = ST.run (BS.unsafeFreeze =<< getBytes s utf8)
 
+--- Beware of cutoff; if the ByteString ends with an incomplete byte sequence,
+--- the last character in the result String becomes U+FFFD (the replacement character).
 decodeUtf8 :: ByteString -> String
 decodeUtf8 (ByteString{payload, offset, length}) =
     newString payload offset length utf8
 
-data CoderResult = pure native java.nio.charset.CoderResult where
-  pure native overflow  java.nio.charset.CoderResult.OVERFLOW  :: CoderResult
-  pure native underflow java.nio.charset.CoderResult.UNDERFLOW :: CoderResult
-  pure native (==) equals :: CoderResult -> CoderResult -> Bool
-  pure native hashCode :: CoderResult -> Int
-
-instance Eq CoderResult
-
-data CharsetDecoder = native java.nio.charset.CharsetDecoder where
-  native decode :: Mutable s CharsetDecoder -> Mutable s ByteBuffer -> Mutable s CharBuffer -> Bool -> ST s CoderResult
-  native flush :: Mutable s CharsetDecoder -> Mutable s CharBuffer -> ST s CoderResult
-
-data ByteBuffer = native java.nio.ByteBuffer where
-  native allocate java.nio.ByteBuffer.allocate :: Int -> STMutable s ByteBuffer
-  native put :: Mutable s ByteBuffer -> ArrayOf s Byte -> Int -> Int -> STMutable s ByteBuffer
-
-data CharBuffer = native java.nio.CharBuffer where
-  native allocate java.nio.CharBuffer.allocate :: Int -> STMutable s CharBuffer
-  native put :: Mutable s CharBuffer -> ArrayOf s Char -> Int -> Int -> STMutable s CharBuffer
-  native toString :: Mutable s CharBuffer -> ST s String
-
---- nowarn: performUnsafe
 decodeUtf8Streaming :: Monad m => ConduitT ByteString String m ()
-decodeUtf8Streaming = do
-    -- the implementation abuses the fact that any Monad, including pure ones,
-    -- is sequentially evaluated.
-    -- better ideas are welcome!
-    decoder <- unsafeLiftIO $ utf8.newDecoder
-    byteBuf <- unsafeLiftIO $ ByteBuffer.allocate 1024
-    charBuf <- unsafeLiftIO $ CharBuffer.allocate 1024
-    let loop cr
-          | cr == CoderResult.underflow = do
-            mbs <- await
-            case mbs of
-              Just bs
-                | BS.length bs > 1024 -> do
-                    let (first, more) = BS.splitAt 1024 bs
-                    leftover more
-                    leftover first
-                    loop cr
-                | otherwise -> do
-                    unsafeLiftIO $ byteBuf.put (mutable bs.payload) bs.offset bs.length
-                    cr' <- unsafeLiftIO $ decoder.decode byteBuf charBuf False
-                    loop cr'
-              Nothing -> do
-                  unsafeLiftIO $ decoder.flush charBuf
-                  yield =<< unsafeLiftIO (charBuf.toString)
-          | otherwise {- overflow -} = do
-            yield =<< unsafeLiftIO (charBuf.toString)
-            cr' <- unsafeLiftIO $ decoder.decode byteBuf charBuf False
-            loop cr'
-    loop CoderResult.underflow
+decodeUtf8Streaming =
+    loop
   where
-    -- actually, there are no I/O involved here, so semantically ST is enough.
-    -- I couldn't make ST be compiled.
-    unsafeLiftIO :: Monad m => IO a -> m a
-    unsafeLiftIO = pure . IO.performUnsafe
+    loop = do
+        mbs <- await
+        case mbs of
+          Nothing -> pure ()
+          Just bs -> do
+            let s = decodeUtf8 bs
+            -- if the last char is U+FFFD (the replacement character), the next chunk of
+            -- ByteString may be needed.
+            if s.isEmpty
+            then yield s
+            else if s.charAt (s.length - 1) /= '\ufffd'
+                 then yield s
+                 else leftoverTail bs s
+            loop
+    -- decreases the length of the bytestring one by one to isolate extra bytes.
+    leftoverTail bs s = do
+        let validLen = find
+              (\len ->
+              let news = decodeUtf8 $ BS.take len bs
+              in news.length < s.length
+              )
+              [BS.length bs, (BS.length bs - 1)..0]
+        fragment <- case validLen of
+             Just len -> yield (decodeUtf8 $ BS.take len bs) >> pure (BS.drop len bs)
+             Nothing  -> pure bs
+        mbs <- await
+        case mbs of
+          Just bs -> leftover (fragment `mappend` bs)
+          Nothing -> yield "\ufffd"

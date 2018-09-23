@@ -1536,7 +1536,7 @@ decodeUtf8 = decodeUtf8Lenient
 --- Decode a stream of binary data as UTF8, replacing any invalid bytes with
 --- the Unicode replacement character.
 decodeUtf8Lenient :: Monad m => ConduitT ByteString String m ()
-decodeUtf8Lenient = map SC.decodeUtf8
+decodeUtf8Lenient = SC.decodeUtf8Streaming
 
 --- Stream in the entirety of a single line.
 ---
