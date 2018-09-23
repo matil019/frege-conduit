@@ -33,7 +33,7 @@ import frege.Prelude hiding
   , repeat
   , replicate, replicateM
   , scanl
-  , stderr, stdout
+  , stderr, stdin, stdout
   , sum
   , take, takeWhile
   , unlines
@@ -64,6 +64,16 @@ import frege.data.Traversable (Traversable())
 import frege.java.Util (ArrayList)
 
 type FilePath = String
+
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemIn  "System.in"  :: MutableIO FI.InputStream
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemOut "System.out" :: MutableIO FO.OutputStream
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemErr "System.err" :: MutableIO FO.OutputStream
 
 --- Yield each of the values contained by the given @Foldable@.
 yieldMany :: (Monad m, Foldable f) => f a -> ConduitT i a m ()
@@ -165,6 +175,10 @@ sourceInputStream is =
         if S.null bs
             then return ()
             else yield bs >> loop
+
+--- @sourceInputStream@ applied to @System.in@.
+stdin :: MonadIO m => ConduitT i ByteString m ()
+stdin = sourceInputStream systemIn
 
 --- Like 'IO.withBinaryFile' in Haskell, but provides a source to read bytes
 --- from.
@@ -914,11 +928,11 @@ println = mapM_ (liftIO . Prelude.println)
 
 --- @sinkOutputStream@ applied to @System.out@.
 stdout :: MonadIO m => ConduitT ByteString o m ()
-stdout = sinkOutputStream System.out
+stdout = sinkOutputStream systemOut
 
 --- @sinkOutputStream@ applied to @System.err@.
 stderr :: MonadIO m => ConduitT ByteString o m ()
-stderr = sinkOutputStream System.err
+stderr = sinkOutputStream systemErr
 
 --- Like 'IO.withBinaryFile' in Haskell, but provides a sink to write bytes
 --- to.
@@ -1545,9 +1559,85 @@ decodeUtf8Lenient = SC.decodeUtf8Streaming
 line :: Monad m => ConduitT String o m r -> ConduitT String o m r
 line = takeExactlyUntilStr (== '\n')
 
+--- Same as 'line', but operates on ASCII/binary data.
+lineAscii :: Monad m => ConduitT ByteString o m r -> ConduitT ByteString o m r
+lineAscii = takeExactlyUntilBS (== 10)
+
 --- Insert a newline character after each incoming chunk of data.
 unlines :: Monad m => ConduitT String String m ()
 unlines = concatMap (:["\n"])
+
+--- Same as 'unlines', but operates on ASCII/binary data.
+unlinesAscii :: Monad m => ConduitT ByteString ByteString m ()
+unlinesAscii = concatMap (:[S.singleton 10])
+
+{--
+ - Split a stream of arbitrarily-chunked String, based on a predicate
+ - on Chars.  Chars that satisfy the predicate will cause chunks
+ - to be split, and aren't included in these output chunks.  Note
+ - that, if you have unknown or untrusted input, this function is
+ - /unsafe/, since it would allow an attacker to form chunks of
+ - massive length and exhaust memory.
+ -}
+splitOnUnboundedStr :: Monad m => (Char -> Bool) -> ConduitT String String m ()
+splitOnUnboundedStr f =
+    start
+  where
+    start = await >>= maybe (return ()) (loop id)
+
+    loop bldr t =
+        if StrSeq.onull y
+            then do
+                mt <- await
+                case mt of
+                    Nothing -> let finalChunk = mconcat $ bldr [t]
+                               in  unless (StrSeq.onull finalChunk) $ yield finalChunk
+                    Just t' -> loop (bldr . (t:)) t'
+            else yield (mconcat $ bldr [x]) >> loop id (StrSeq.drop 1 y)
+      where
+        (x, y) = StrSeq.break f t
+
+{--
+ - Same as 'splitOnUnboundedStr', but for @ByteString@.
+ -}
+splitOnUnboundedBS :: Monad m => (Byte -> Bool) -> ConduitT ByteString ByteString m ()
+splitOnUnboundedBS f =
+    start
+  where
+    start = await >>= maybe (return ()) (loop id)
+
+    loop bldr t =
+        if BSSeq.onull y
+            then do
+                mt <- await
+                case mt of
+                    Nothing -> let finalChunk = mconcat $ bldr [t]
+                               in  unless (BSSeq.onull finalChunk) $ yield finalChunk
+                    Just t' -> loop (bldr . (t:)) t'
+            else yield (mconcat $ bldr [x]) >> loop id (BSSeq.drop 1 y)
+      where
+        (x, y) = BSSeq.break f t
+
+{--
+ - Convert a stream of arbitrarily-chunked textual data into a stream of data
+ - where each chunk represents a single line. Note that, if you have
+ - unknown or untrusted input, this function is /unsafe/, since it would allow an
+ - attacker to form lines of massive length and exhaust memory.
+ -
+ - Porting note: chunk type specialized to @String@, whereas the original takes
+ - any sequence whose element is @Char@.
+ -}
+linesUnbounded :: Monad m => ConduitT String String m ()
+linesUnbounded = splitOnUnboundedStr (== '\n')
+
+{--
+ - Same as 'linesUnbounded', bot for ASCII/binary data.
+ -
+ - Porting note: chunk type specialized to @ByteString@, whereas the original takes
+ - any sequence whose element is @Word8@.
+ -}
+linesUnboundedAscii :: Monad m => ConduitT ByteString ByteString m ()
+linesUnboundedAscii = splitOnUnboundedBS (== 10)
 
 --- Stream in the chunked input until an element matches a predicate.
 ---

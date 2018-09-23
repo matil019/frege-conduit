@@ -82,6 +82,9 @@ pack x = packImpl x (Prelude.length x)
 
 private pure native packImpl ByteString.packImpl_ :: [Byte] -> Int -> ByteString
 
+singleton :: Byte -> ByteString
+singleton = pack . pure
+
 pure native snoc ByteString.snoc_ :: ByteString -> Byte -> ByteString
 
 splitAt :: Int -> ByteString -> (ByteString, ByteString)
