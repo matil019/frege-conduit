@@ -22,6 +22,7 @@ import frege.data.conduit.Combinators as DCC
   -- *** I\/O
   , public sourceFile
   , public sourceInputStream
+  , public stdin              stdinC
   , public withSourceFile
 
   -- *** Filesystem
