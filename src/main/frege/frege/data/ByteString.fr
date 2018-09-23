@@ -123,8 +123,8 @@ native module where {
   ) {
     if (length < 0) {
       throw new IllegalArgumentException("length < 0");
-    } else if (length >= arr.length + offset) {
-      throw new IllegalArgumentException("length >= arr.length + offset" +
+    } else if (length > arr.length + offset) {
+      throw new IllegalArgumentException("length > arr.length + offset" +
           ", length = " + length +
           ", arr.length = " + arr.length +
           ", offset = " + offset);
