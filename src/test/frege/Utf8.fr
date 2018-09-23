@@ -1,0 +1,6 @@
+module Test where
+
+import frege.Conduit
+
+main :: IO ()
+main = runConduitRes $ sourceFile "input.txt" .| decodeUtf8C .| encodeUtf8C .| sinkFile "output.txt"
