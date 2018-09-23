@@ -1,6 +1,9 @@
 module frege.data.conduit.internal.StringCodec where
 
 import frege.data.ByteString as BS (ByteString)
+import frege.data.Conduit (ConduitT, await, leftover, yield)
+import frege.data.List (find)
+import frege.data.Monoid (mappend)
 
 data Charset = pure native java.nio.charset.Charset
 
@@ -12,6 +15,42 @@ pure native newString new :: JArray Byte -> Int -> Int -> Charset -> String
 encodeUtf8 :: String -> ByteString
 encodeUtf8 s = ST.run (BS.unsafeFreeze =<< getBytes s utf8)
 
+--- Beware of cutoff; if the ByteString ends with an incomplete byte sequence,
+--- the last character in the result String becomes U+FFFD (the replacement character).
 decodeUtf8 :: ByteString -> String
 decodeUtf8 (ByteString{payload, offset, length}) =
     newString payload offset length utf8
+
+decodeUtf8Streaming :: Monad m => ConduitT ByteString String m ()
+decodeUtf8Streaming =
+    loop
+  where
+    loop = do
+        mbs <- await
+        case mbs of
+          Nothing -> pure ()
+          Just bs -> do
+            let s = decodeUtf8 bs
+            -- if the last char is U+FFFD (the replacement character), the next chunk of
+            -- ByteString may be needed.
+            if s.isEmpty
+            then yield s
+            else if s.charAt (s.length - 1) /= '\ufffd'
+                 then yield s
+                 else leftoverTail bs s
+            loop
+    -- decreases the length of the bytestring one by one to isolate extra bytes.
+    leftoverTail bs s = do
+        let validLen = find
+              (\len ->
+              let news = decodeUtf8 $ BS.take len bs
+              in news.length < s.length
+              )
+              [BS.length bs, (BS.length bs - 1)..0]
+        fragment <- case validLen of
+             Just len -> yield (decodeUtf8 $ BS.take len bs) >> pure (BS.drop len bs)
+             Nothing  -> pure bs
+        mbs <- await
+        case mbs of
+          Just bs -> leftover (fragment `mappend` bs)
+          Nothing -> yield "\ufffd"

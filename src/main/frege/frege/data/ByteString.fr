@@ -10,6 +10,7 @@ import frege.Prelude hiding
   , last
   , length
   , null
+  , splitAt
   , take
   , tail
   , thaw
@@ -83,6 +84,9 @@ private pure native packImpl ByteString.packImpl_ :: [Byte] -> Int -> ByteString
 
 pure native snoc ByteString.snoc_ :: ByteString -> Byte -> ByteString
 
+splitAt :: Int -> ByteString -> (ByteString, ByteString)
+splitAt i bs = (take i bs, drop i bs)
+
 take :: Int -> ByteString -> ByteString
 take n bs
   | n <= 0 = empty
@@ -119,8 +123,8 @@ native module where {
   ) {
     if (length < 0) {
       throw new IllegalArgumentException("length < 0");
-    } else if (length >= arr.length + offset) {
-      throw new IllegalArgumentException("length >= arr.length + offset" +
+    } else if (length > arr.length + offset) {
+      throw new IllegalArgumentException("length > arr.length + offset" +
           ", length = " + length +
           ", arr.length = " + arr.length +
           ", offset = " + offset);

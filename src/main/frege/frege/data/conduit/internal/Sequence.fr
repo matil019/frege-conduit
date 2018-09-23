@@ -196,7 +196,7 @@ data BSSeq where
   span :: (Byte -> Bool) -> ByteString -> (ByteString, ByteString)
   span f s = let (xl, yl) = Prelude.span f $ BS.unpack s in (BS.pack xl, BS.pack yl)
   splitAt :: Int -> ByteString -> (ByteString, ByteString)
-  splitAt i s = (BS.take i s, BS.drop i s)
+  splitAt = BS.splitAt
   tail :: ByteString -> ByteString
   tail = BS.tail
   uncons :: ByteString -> Maybe (Byte, ByteString)
