@@ -31,26 +31,33 @@ decodeUtf8Streaming =
           Nothing -> pure ()
           Just bs -> do
             let s = decodeUtf8 bs
-            -- if the last char is U+FFFD (the replacement character), the next chunk of
-            -- ByteString may be needed.
+            -- String.new replaces trailing invalid byte(s) to a U+FFFD (the replacement character).
+            -- if the last char is U+FFFD, the next chunk of ByteString is fetched to prepend it to
+            -- form a (hopefully) valid UTF-8 sequence.
             if s.isEmpty
             then yield s
             else if s.charAt (s.length - 1) /= '\ufffd'
                  then yield s
-                 else leftoverTail bs s
+                 else do
+                     let (mdecoded, fragment) = decodeAnd bs s
+                     maybe (pure ()) yield mdecoded
+                     mbs2 <- await
+                     case mbs2 of
+                       Just bs2 -> leftover (fragment `mappend` bs2)
+                       -- no more chunk means the input is invalid
+                       Nothing  -> yield "\ufffd"
             loop
-    -- decreases the length of the bytestring one by one to isolate extra bytes.
-    leftoverTail bs s = do
+    -- splits a bytestring into two which the former should be decoded into a valid String
+    -- and the latter should be concatenated to the next ByteString chunk to form another.
+    decodeAnd :: ByteString -> String -> (Maybe String, ByteString)
+    decodeAnd bs s =
         let validLen = find
               (\len ->
               let news = decodeUtf8 $ BS.take len bs
               in news.length < s.length
               )
-              [BS.length bs, (BS.length bs - 1)..0]
-        fragment <- case validLen of
-             Just len -> yield (decodeUtf8 $ BS.take len bs) >> pure (BS.drop len bs)
-             Nothing  -> pure bs
-        mbs <- await
-        case mbs of
-          Just bs -> leftover (fragment `mappend` bs)
-          Nothing -> yield "\ufffd"
+              [BS.length bs - 1, (BS.length bs - 2)..0]
+        in
+        case validLen of
+          Just len -> (Just $ decodeUtf8 $ BS.take len bs, BS.drop len bs)
+          Nothing  -> (Nothing, bs)
