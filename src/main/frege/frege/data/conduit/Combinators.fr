@@ -65,6 +65,16 @@ import frege.java.Util (ArrayList)
 
 type FilePath = String
 
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemIn  "System.in"  :: MutableIO FI.InputStream
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemOut "System.out" :: MutableIO FO.OutputStream
+--- nowarn: not supposed to change
+--- For compatibility with pre-3.25 Frege, where this is declared as (deprecated) @mutable native@
+native systemErr "System.err" :: MutableIO FO.OutputStream
+
 --- Yield each of the values contained by the given @Foldable@.
 yieldMany :: (Monad m, Foldable f) => f a -> ConduitT i a m ()
 yieldMany = Seq.ofoldMap yield
@@ -914,11 +924,11 @@ println = mapM_ (liftIO . Prelude.println)
 
 --- @sinkOutputStream@ applied to @System.out@.
 stdout :: MonadIO m => ConduitT ByteString o m ()
-stdout = sinkOutputStream System.out
+stdout = sinkOutputStream systemOut
 
 --- @sinkOutputStream@ applied to @System.err@.
 stderr :: MonadIO m => ConduitT ByteString o m ()
-stderr = sinkOutputStream System.err
+stderr = sinkOutputStream systemErr
 
 --- Like 'IO.withBinaryFile' in Haskell, but provides a sink to write bytes
 --- to.
