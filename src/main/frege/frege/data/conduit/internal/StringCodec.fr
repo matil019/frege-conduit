@@ -40,15 +40,15 @@ data CharBuffer = native java.nio.CharBuffer where
   native put :: Mutable s CharBuffer -> ArrayOf s Char -> Int -> Int -> STMutable s CharBuffer
   native toString :: Mutable s CharBuffer -> ST s String
 
--- decodeUtf8Streaming :: Monad m => ConduitT ByteString String m ()
-decodeUtf8Streaming :: ConduitT ByteString String (ST s) ()
+--- nowarn: performUnsafe
+decodeUtf8Streaming :: Monad m => ConduitT ByteString String m ()
 decodeUtf8Streaming = do
     -- the implementation abuses the fact that any Monad, including pure ones,
     -- is sequentially evaluated.
     -- better ideas are welcome!
-    decoder <- lift $ utf8.newDecoder
-    byteBuf <- lift $ ByteBuffer.allocate 1024
-    charBuf <- lift $ CharBuffer.allocate 1024
+    decoder <- unsafeLiftIO $ utf8.newDecoder
+    byteBuf <- unsafeLiftIO $ ByteBuffer.allocate 1024
+    charBuf <- unsafeLiftIO $ CharBuffer.allocate 1024
     let loop cr
           | cr == CoderResult.underflow = do
             mbs <- await
@@ -60,14 +60,19 @@ decodeUtf8Streaming = do
                     leftover first
                     loop cr
                 | otherwise -> do
-                    lift $ byteBuf.put (mutable bs.payload) bs.offset bs.length
-                    cr' <- lift $ decoder.decode byteBuf charBuf False
+                    unsafeLiftIO $ byteBuf.put (mutable bs.payload) bs.offset bs.length
+                    cr' <- unsafeLiftIO $ decoder.decode byteBuf charBuf False
                     loop cr'
               Nothing -> do
-                  lift $ decoder.flush charBuf
-                  yield =<< lift (charBuf.toString)
+                  unsafeLiftIO $ decoder.flush charBuf
+                  yield =<< unsafeLiftIO (charBuf.toString)
           | otherwise {- overflow -} = do
-            yield =<< lift (charBuf.toString)
-            cr' <- lift $ decoder.decode byteBuf charBuf False
+            yield =<< unsafeLiftIO (charBuf.toString)
+            cr' <- unsafeLiftIO $ decoder.decode byteBuf charBuf False
             loop cr'
     loop CoderResult.underflow
+  where
+    -- actually, there are no I/O involved here, so semantically ST is enough.
+    -- I couldn't make ST be compiled.
+    unsafeLiftIO :: Monad m => IO a -> m a
+    unsafeLiftIO = pure . IO.performUnsafe
