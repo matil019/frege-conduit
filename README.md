@@ -5,6 +5,21 @@ An effort to port the Haskell library [conduit][hackage-conduit] to Frege.
 Please see [the excellent writeup][github-conduit] in the original repository
 for usage.
 
+## Table of Contents
+
+<!-- https://github.com/ekalinin/github-markdown-toc -->
+<!--ts-->
+   * [frege-conduit](#frege-conduit)
+      * [Table of Contents](#table-of-contents)
+      * [How to build](#how-to-build)
+      * [Using frege-conduit as a dependency](#using-frege-conduit-as-a-dependency)
+         * [1. Clone the source tree as a subproject](#1-clone-the-source-tree-as-a-subproject)
+         * [2. Install frege-conduit into the local repository](#2-install-frege-conduit-into-the-local-repository)
+
+<!-- Added by: yohashi, at: 2018-09-30T12:00+09:00 -->
+
+<!--te-->
+
 ## How to build
 
 This library is configured to depend on [frege-3.25.42][frege-official-release].
