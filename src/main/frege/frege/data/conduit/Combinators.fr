@@ -42,7 +42,7 @@ import frege.Prelude hiding
 import frege.control.monad.io.Unlift (MonadUnliftIO)
 import frege.control.monad.trans.MonadIO (MonadIO)
 import frege.control.monad.trans.MonadTrans (lift)
-import frege.control.monad.trans.Resource (MonadResource)
+import frege.control.monad.trans.Resource (MonadResource, allocate)
 import frege.data.ByteString as S (ByteString)
 import frege.data.Conduit
   ( .|
@@ -905,6 +905,68 @@ foldMapMBS f = foldM (BSSeq.ofoldlM (\accum e -> mappend accum `liftM` f e)) mem
 --- Stream all incoming data to the given file.
 sinkFile :: MonadResource m => FilePath -> ConduitT ByteString o m ()
 sinkFile fp = sinkIOOutputStream (FO.openFile fp)
+
+private data Path = pure native java.nio.file.Path where
+  pure native toString :: Path -> String
+private data Paths = pure native java.nio.file.Paths where
+  native get java.nio.file.Paths.get :: FilePath -> IO Path
+private data Files = pure native java.nio.file.Files where
+  native createTempFile java.nio.file.Files.createTempFile
+    ::         String -> String -> IO Path throws IOException
+     | Path -> String -> String -> IO Path throws IOException
+  native delete java.nio.file.Files.delete
+    :: Path -> IO () throws IOException
+  native newOutputStream java.nio.file.Files.newOutputStream
+    :: Path -> IOMutable FO.OutputStream throws IOException
+private data NoSuchFileException = pure native java.nio.file.NoSuchFileException
+private derive Exceptional NoSuchFileException
+
+private sinkTempFileImpl
+  :: MonadResource m
+  => String
+  -> (String -> String -> IO Path)
+  -> ConduitT ByteString o m FilePath
+private sinkTempFileImpl pattern mktemp = do
+    let (prefix, suffix) =
+          case span (/= '.') $ reverse $ toList pattern of
+            (revNoDots, []) -> (packed $ reverse revNoDots, "")
+            (revSuf, dot:revPre) -> (packed $ reverse revPre, packed $ dot:reverse revSuf)
+    (_, (p, os)) <- allocate
+        (do p <- mktemp prefix suffix
+            os <- Files.newOutputStream p
+            pure (p, os))
+        (\(p, os) -> os.close `finally` (Files.delete p `catch` \(_::NoSuchFileException) -> pure ()))
+    sinkOutputStream os
+    liftIO $ os.close
+    pure p.toString
+
+{--
+ - Stream data into a temporary file in the given directory with the
+ - given filename pattern, and return the temporary filename. The
+ - temporary file will be automatically deleted when exiting the
+ - active 'ResourceT' block, if it still exists.
+ -
+ - Porting note: implemented with @java.nio.file.Files.createTempFile@.
+ -}
+sinkTempFile :: MonadResource m
+             => FilePath -- temp directory
+             -> String -- filename pattern
+             -> ConduitT ByteString o m FilePath
+sinkTempFile tmpdir pattern = sinkTempFileImpl pattern $ \prefix suffix -> do
+    tmpdirp <- Paths.get tmpdir
+    Files.createTempFile tmpdirp prefix suffix
+
+{--
+ - Same as 'sinkTempFile', but will use the default temp file
+ - directory for the system as the first argument.
+ -
+ - Porting note: implemented with @java.nio.file.Files.createTempFile@.
+ -}
+sinkSystemTempFile
+    :: MonadResource m
+    => String -- filename pattern
+    -> ConduitT ByteString o m FilePath
+sinkSystemTempFile pattern = sinkTempFileImpl pattern Files.createTempFile
 
 --- Stream all incoming data to the given 'OutputStream'. Note that this function
 --- does /not/ flush and will /not/ close the @Handle@ when processing completes.

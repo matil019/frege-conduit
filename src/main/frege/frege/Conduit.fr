@@ -131,8 +131,8 @@ import frege.data.conduit.Combinators as DCC
   -- *** I\/O
   , public sinkFile
   -- , public sinkFileCautious
-  -- , public sinkTempFile
-  -- , public sinkSystemTempFile
+  , public sinkTempFile
+  , public sinkSystemTempFile
   , public sinkOutputStream
   , public sinkIOOutputStream
   , public println            printlnC
