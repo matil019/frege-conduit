@@ -5,9 +5,11 @@
 -- TODO atomicity, thrown exception, and masking
 module frege.control.monad.trans.Resource where
 
-import frege.control.monad.io.Unlift (MonadUnliftIO)
-import frege.control.monad.trans.MonadIO (MonadIO)
-import frege.control.monad.trans.MonadTrans (MonadTrans)
+import frege.control.monad.io.Unlift (MonadUnliftIO, UnliftIO, withUnliftIO)
+import frege.control.monad.trans.MaybeT (MaybeT)
+import frege.control.monad.trans.MonadIO (MonadIO, liftIO)
+import frege.control.monad.trans.MonadTrans (MonadTrans, lift)
+import frege.control.monad.State (StateT)
 import frege.data.HashMap (HashMap)
 
 --- A @Monad@ which allows for safe resource allocation. In theory, any monad
@@ -33,11 +35,30 @@ instance Applicative m => Applicative (ResourceT m) where
     ResourceT.Mk mf <*> ResourceT.Mk ma = ResourceT.Mk $ \r ->
         mf r <*> ma r
 
+{-- An \"alternative\" to @Alternative@ -}
+instance Alt m => Alt (ResourceT m) where
+    ResourceT.Mk mf <|> ResourceT.Mk ma = ResourceT.Mk $ \r ->
+        mf r <|> ma r
+
+{-- An \"alternative\" to @Alternative@ -}
+instance Plus m => Plus (ResourceT m) where
+    pzero = ResourceT.Mk $ \_ -> pzero
+
+instance MonadZero m => MonadZero (ResourceT m) where
+    mzero = ResourceT.Mk $ \_ -> mzero
+
+instance MonadPlus m => MonadPlus (ResourceT m) where
+    ResourceT.Mk mf `mplus` ResourceT.Mk ma = ResourceT.Mk $ \r ->
+        mf r `mplus` ma r
+
 instance Monad m => Monad (ResourceT m) where
     ResourceT.Mk ma >>= f = ResourceT.Mk $ \r -> do
         a <- ma r
         let ResourceT.Mk f' = f a
         f' r
+
+instance MonadFail m => MonadFail (ResourceT m) where
+    fail = lift . fail
 
 instance MonadIO m => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
@@ -47,6 +68,19 @@ instance MonadTrans ResourceT where
 
 instance MonadIO m => MonadIO (ResourceT m) where
     liftIO = lift . liftIO
+
+instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
+    askUnliftIO = ResourceT.Mk $ \r ->
+                  withUnliftIO $ \u ->
+                  return (UnliftIO (UnliftIO.run u . flip unResourceT r))
+      where
+      unResourceT (ResourceT.Mk m) = m
+
+instance MonadResource m => MonadResource (MaybeT m) where
+    liftResourceT = lift . liftResourceT
+
+instance MonadResource m => MonadResource (StateT s m) where
+    liftResourceT = lift . liftResourceT
 
 --- Unwrap a 'ResourceT' transformer, and call all registered release actions.
 ---
