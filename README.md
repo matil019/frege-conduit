@@ -47,7 +47,7 @@ name := "frege"
 version := "3.25.42"
 autoScalaLibrary := false
 crossPaths := false
-packageBin in Compile := file(s"frege3.25.42.jar")
+packageBin in Compile := file("frege3.25.42.jar")
 ```
 
 And `project/build.properties`:
