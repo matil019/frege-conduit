@@ -54,3 +54,15 @@ class MonadIO m => MonadUnliftIO m where
 instance MonadUnliftIO IO where
   askUnliftIO = return (UnliftIO id)
   withRunInIO inner = inner id
+
+{--
+ - Convenience function for capturing the monadic context and running an 'IO'
+ - action. The 'UnliftIO' newtype wrapper is rarely needed, so prefer
+ - 'withRunInIO' to this function.
+ -}
+withUnliftIO :: MonadUnliftIO m => (UnliftIO m -> IO a) -> m a
+withUnliftIO inner = do
+    -- using askUnliftIO here triggers javac compilation error
+    -- u <- askUnliftIO
+    u <- withRunInIO (\run -> return (UnliftIO run))
+    liftIO (inner u)
