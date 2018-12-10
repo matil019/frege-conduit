@@ -8,4 +8,4 @@ crossPaths := false
 
 organization := "xyz.denshi_no_yamaoku"
 name := "frege-conduit"
-version := "0.1-SNAPSHOT"
+version := "0.3-SNAPSHOT"
