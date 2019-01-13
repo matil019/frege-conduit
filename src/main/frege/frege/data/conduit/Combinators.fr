@@ -919,6 +919,15 @@ private data Files = pure native java.nio.file.Files where
   native newOutputStream java.nio.file.Files.newOutputStream
     :: Path -> IOMutable FO.OutputStream throws IOException
 
+{--
+ - The common implementation of 'sinkTempFile' and 'sinkSystemTempFile'.
+ -
+ - Splits the pattern string at the last period to insert a random name between
+ - them.
+ -
+ - e.g. With a pattern "foo.bar", a temporary file named
+ - "foo-<random string>.bar" is created.
+ -}
 private sinkTempFileImpl
   :: MonadResource m
   => String
