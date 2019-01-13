@@ -43,7 +43,10 @@ instance MonadIO m => MonadIO (ConduitT i o m) where
 instance MonadTrans (ConduitT i o) where
     lift mr = ConduitT (\rest -> PipeM (liftM rest mr))
 
--- TODO why this doesn't require "Monad m =>" ??
+instance MonadResource m => MonadResource (ConduitT i o m) where
+    liftResourceT = lift . liftResourceT
+
+-- TODO why doesn't this require "Monad m =>" ??
 instance Monoid (ConduitT i o m ()) where
     mempty = pure ()
     mappend = (>>)

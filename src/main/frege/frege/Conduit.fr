@@ -1,8 +1,9 @@
 module frege.Conduit where
 
+import frege.control.monad.io.Unlift public
 import frege.control.monad.trans.MonadIO public
 import frege.control.monad.trans.MonadTrans public
-import frege.control.monad.trans.Resource (public MonadResource, public runResourceT)
+import frege.control.monad.trans.Resource (public MonadResource, public ResourceT, public runResourceT)
 import frege.data.Conduit as DC public
 import frege.data.conduit.Combinators as DCC
   -- ** Producers
@@ -22,10 +23,14 @@ import frege.data.conduit.Combinators as DCC
   -- *** I\/O
   , public sourceFile
   , public sourceInputStream
+  -- , public sourceInputStreamUnsafe
+  -- , public sourceIOInputStream
   , public stdin              stdinC
   , public withSourceFile
 
   -- *** Filesystem
+  -- , public sourceDiectory
+  -- , public sourceDirectoryDeep
 
   -- ** Consumers
   -- *** Pure
@@ -125,12 +130,17 @@ import frege.data.conduit.Combinators as DCC
 
   -- *** I\/O
   , public sinkFile
+  -- , public sinkFileCautious
+  , public sinkTempFile
+  , public sinkSystemTempFile
   , public sinkOutputStream
   , public sinkIOOutputStream
   , public println            printlnC
   , public stdout             stdoutC
   , public stderr             stderrC
   , public withSinkFile
+  -- , public withSinkFileCautious
+  -- , public sinkOutputStreamFlush
 
   -- ** Transformers
   -- *** Pure
