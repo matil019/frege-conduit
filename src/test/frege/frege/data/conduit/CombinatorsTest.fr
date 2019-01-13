@@ -1,0 +1,81 @@
+module frege.data.conduit.CombinatorsTest where
+
+import frege.data.Conduit (.|, runConduitRes)
+
+import frege.data.conduit.Combinators as C ()
+import frege.data.Traversable (traverse)
+import frege.java.IO (File)
+
+shouldBe :: (Show a, Eq a) => a -> a -> IO ()
+shouldBe a b
+  | a == b = pure ()
+  | otherwise = fail $ "expected: " ++ show a ++ ", but got: " ++ show b
+
+shouldSatisfy :: Show a => a -> (a -> Bool) -> IO ()
+shouldSatisfy a f
+  | f a = pure ()
+  | otherwise = fail $ show a ++ " didn't satisfy the expectation"
+
+bracket :: IO a -> (a -> IO b) -> (a -> IO c) -> IO c
+bracket open close work = do
+    a <- open
+    work a `finally` close a
+
+native listFiles :: MutableIO File -> IO (Maybe (ArrayOf RealWorld (MutableIO File)))
+
+pure native endsWith :: String -> String -> Bool
+
+rmf :: MutableIO File -> IO Bool
+rmf f = do
+    mchildren <- listFiles f
+    childrenOk <- case mchildren of
+      Nothing -> pure True
+      Just childrenM -> join $ flip readonly childrenM $ \children ->
+          fmap and $ traverse rmf $ toList children
+    thisOk <- f.delete
+    pure $ thisOk && childrenOk
+
+createTempDirectory :: String -> String -> IOMutable File
+createTempDirectory prefix suffix = do
+    f <- File.createTempFile prefix suffix
+    f.delete
+    f.mkdirs
+    pure f
+
+sinkTempFileTest :: IO ()
+sinkTempFileTest =
+    bracket (createTempDirectory "frege-conduit-test" ".d") rmf $ \tmpd -> do
+        tmpdPath <- tmpd.getPath
+        tmpfPath <- runConduitRes
+           $ C.yieldMany ["apple", "banana", "cherry"]
+          .| C.encodeUtf8
+          .| C.sinkTempFile tmpdPath "foo.bar"
+        tmpfName <- File.new tmpfPath >>= _.getName
+        tmpfName `shouldSatisfy` (\name -> name.startsWith "foo" && endsWith name ".bar")
+        content <- runConduitRes
+           $ C.sourceFile tmpfPath
+          .| C.decodeUtf8
+          .| C.fold
+        content `shouldBe` "applebananacherry"
+
+sinkSystemTempFileTest :: IO ()
+sinkSystemTempFileTest =
+    bracket
+      (do runConduitRes
+              $ C.yieldMany ["apple", "banana", "cherry"]
+             .| C.encodeUtf8
+             .| C.sinkSystemTempFile "foo.bar")
+      (File.new >=> File.delete)
+      $ \tmpfPath -> do
+            tmpfName <- File.new tmpfPath >>= _.getName
+            tmpfName `shouldSatisfy` (\name -> name.startsWith "foo" && endsWith name ".bar")
+            content <- runConduitRes
+               $ C.sourceFile tmpfPath
+              .| C.decodeUtf8
+              .| C.fold
+            content `shouldBe` "applebananacherry"
+
+main :: IO ()
+main = do
+    sinkTempFileTest
+    sinkSystemTempFileTest

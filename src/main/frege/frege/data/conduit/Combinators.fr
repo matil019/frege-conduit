@@ -918,8 +918,6 @@ private data Files = pure native java.nio.file.Files where
     :: Path -> IO () throws IOException
   native newOutputStream java.nio.file.Files.newOutputStream
     :: Path -> IOMutable FO.OutputStream throws IOException
-private data NoSuchFileException = pure native java.nio.file.NoSuchFileException
-private derive Exceptional NoSuchFileException
 
 private sinkTempFileImpl
   :: MonadResource m
@@ -935,9 +933,8 @@ private sinkTempFileImpl pattern mktemp = do
         (do p <- mktemp prefix suffix
             os <- Files.newOutputStream p
             pure (p, os))
-        (\(p, os) -> os.close `finally` (Files.delete p `catch` \(_::NoSuchFileException) -> pure ()))
+        (\(_, os) -> os.close)
     sinkOutputStream os
-    liftIO $ os.close
     pure p.toString
 
 {--
