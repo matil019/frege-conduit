@@ -1,0 +1,29 @@
+module frege.control.monad.trans.ResourceTest where
+
+import frege.control.monad.trans.Resource (MonadResource, allocate, runResourceT)
+import test.HspecLike (shouldBe)
+
+data Action = Acquire Int | Release Int
+derive Eq Action
+derive Show Action
+
+allocateAction :: MonadResource m => IORef [Action] -> Int -> m ()
+allocateAction actions i =
+  void $ allocate
+    (      actions.modify (Acquire i :))
+    (\_ -> actions.modify (Release i :))
+
+--- Makes sure that resources are released in the reverse order.
+orderedRelease :: IO ()
+orderedRelease = do
+    actions <- Ref.new []
+    runResourceT $ do
+        allocateAction actions 0
+        allocateAction actions 1
+    xs <- actions.get
+    -- xs should contain the reversed order of the performed actions
+    xs `shouldBe` [Release 0, Release 1, Acquire 1, Acquire 0]
+
+main :: IO ()
+main = do
+    orderedRelease

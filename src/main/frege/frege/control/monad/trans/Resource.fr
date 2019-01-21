@@ -10,7 +10,7 @@ import frege.control.monad.trans.MaybeT (MaybeT)
 import frege.control.monad.trans.MonadIO (MonadIO, liftIO)
 import frege.control.monad.trans.MonadTrans (MonadTrans, lift)
 import frege.control.monad.State (StateT)
-import frege.data.HashMap (HashMap)
+import frege.data.TreeMap (TreeMap)
 
 --- A @Monad@ which allows for safe resource allocation. In theory, any monad
 --- transformer stack which includes a @ResourceT@ can be an instance of
@@ -118,7 +118,7 @@ private register' istate rel = do
     rm <- istate.get
     (rm', key) <- case rm of
         ReleaseMap key rf m ->
-            pure ( ReleaseMap (key - 1) rf (HashMap.insert key (const rel) m)
+            pure ( ReleaseMap (key - 1) rf (TreeMap.insert key (const rel) m)
                  , ReleaseKey istate key
                  )
         ReleaseMapClosed -> fail "register'"
@@ -139,10 +139,10 @@ private release' istate key act = do
     act maction
   where
     lookupAction (rm@(ReleaseMap next rf m)) =
-        case HashMap.lookup key m of
+        case TreeMap.lookup key m of
             Nothing -> (rm, Nothing)
             Just action ->
-                ( ReleaseMap next rf $ HashMap.delete key m
+                ( ReleaseMap next rf $ TreeMap.delete key m
                 , Just (action ReleaseEarly)
                 )
     -- We tried to call release, but since the state is already closed, we
@@ -157,7 +157,7 @@ transResourceT :: (m a -> n b) -> ResourceT m a -> ResourceT n b
 transResourceT f (ResourceT.Mk mx) = ResourceT.Mk (\r -> f (mx r))
 
 
-type IntMap = HashMap Int
+type IntMap = TreeMap Int
 
 --- A lookup key for a specific release action. This value is returned by
 --- 'register' and 'allocate', and is passed to 'release'.
@@ -208,7 +208,7 @@ stateCleanupChecked morig istate = do
         pure mm
     case mm of
         Just m -> do
-            res <- mapMaybeReverseM (\x -> try (x rtype)) $ HashMap.values m
+            res <- mapMaybeReverseM (\x -> try (x rtype)) $ elems m
             case res of
                 [] -> return () -- nothing went wrong
                 -- e:es -> E.throwIO $ ResourceCleanupException morig e es
@@ -219,6 +219,11 @@ stateCleanupChecked morig istate = do
     try io = fmap (either Just (\() -> Nothing)) (catchAll io)
 
     rtype = maybe ReleaseNormal (const ReleaseException) morig
+
+    -- I believe TreeMap.values is sorted by their keys but Froogle says
+    -- otherwise. TreeMap.each, on the other hand, is stated to be sorted.
+    elems :: TreeMap a b -> [b]
+    elems = map snd . TreeMap.each
 
 -- Note that this returns values in reverse order, which is what we
 -- want in the specific case of this function.

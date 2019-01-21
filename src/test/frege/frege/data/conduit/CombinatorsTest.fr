@@ -1,20 +1,10 @@
 module frege.data.conduit.CombinatorsTest where
 
 import frege.data.Conduit (.|, runConduitRes)
-
-import frege.data.conduit.Combinators as C ()
 import frege.data.Traversable (traverse)
+import frege.data.conduit.Combinators as C ()
 import frege.java.IO (File)
-
-shouldBe :: (Show a, Eq a) => a -> a -> IO ()
-shouldBe a b
-  | a == b = pure ()
-  | otherwise = fail $ "expected: " ++ show a ++ ", but got: " ++ show b
-
-shouldSatisfy :: Show a => a -> (a -> Bool) -> IO ()
-shouldSatisfy a f
-  | f a = pure ()
-  | otherwise = fail $ show a ++ " didn't satisfy the expectation"
+import test.HspecLike (shouldBe, shouldSatisfy)
 
 bracket :: IO a -> (a -> IO b) -> (a -> IO c) -> IO c
 bracket open close work = do
