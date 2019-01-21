@@ -1,0 +1,13 @@
+module test.HspecLike where
+
+type Expectation = IO ()
+
+shouldBe :: (Show a, Eq a) => a -> a -> Expectation
+shouldBe a b
+  | a == b = pure ()
+  | otherwise = fail $ "expected: " ++ show b ++ ", but got: " ++ show a
+
+shouldSatisfy :: Show a => a -> (a -> Bool) -> Expectation
+shouldSatisfy a f
+  | f a = pure ()
+  | otherwise = fail $ show a ++ " didn't satisfy the expectation"
