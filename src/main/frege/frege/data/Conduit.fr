@@ -1,6 +1,8 @@
---- If this is your first time with conduit, you should probably start with
---- the tutorial:
---- <https://github.com/snoyberg/conduit#readme>.
+{--
+   If this is your first time with conduit, you should probably start with
+   the tutorial:
+   <https://github.com/snoyberg/conduit#readme>.
+ -}
 module frege.data.Conduit where
 
 import frege.control.monad.io.Unlift (MonadUnliftIO, withRunInIO)
@@ -20,11 +22,13 @@ import frege.data.conduit.internal.Pipe
   )
 import frege.data.wrapper.Identity (Identity)
 
---- Core datatype of the conduit package. This type represents a general
---- component which can consume a stream of input values @i@, produce a stream
---- of output values @o@, perform actions in the @m@ monad, and produce a final
---- result @r@. The type synonyms provided here are simply wrappers around this
---- type.
+{--
+   Core datatype of the conduit package. This type represents a general
+   component which can consume a stream of input values @i@, produce a stream
+   of output values @o@, perform actions in the @m@ monad, and produce a final
+   result @r@. The type synonyms provided here are simply wrappers around this
+   type.
+ -}
 data ConduitT i o m r = ConduitT
     { run :: forall b.
              (r -> Pipe i i o () m b) -> Pipe i i o () m b
@@ -55,49 +59,57 @@ instance Monoid (ConduitT i o m ()) where
 runConduit :: Monad m => ConduitT () Void m r -> m r
 runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
 
---- Run a pure pipeline until processing completes, i.e. a pipeline with
---- @Identity@ as the base monad. This is equivalent to
---- @Identity.run . runConduit@.
+{--
+   Run a pure pipeline until processing completes, i.e. a pipeline with
+   @Identity@ as the base monad. This is equivalent to
+   @Identity.run . runConduit@.
+ -}
 runConduitPure :: ConduitT () Void Identity r -> r
 runConduitPure = Identity.run . runConduit
 
---- Run a pipeline which acquires resources with @ResourceT@, and
---- then run the @ResourceT@ transformer. This is equivalent to
---- @runResourceT . runConduit@.
+{--
+   Run a pipeline which acquires resources with @ResourceT@, and
+   then run the @ResourceT@ transformer. This is equivalent to
+   @runResourceT . runConduit@.
+ -}
 runConduitRes :: MonadUnliftIO m => ConduitT () Void (ResourceT m) r -> m r
 runConduitRes = runResourceT . runConduit
 
---- Named function synonym for '.|'.
----
---- Equivalent to '.|'.
+{--
+   Named function synonym for '.|'.
+
+   Equivalent to '.|'.
+ -}
 fuse :: Monad m => ConduitT a b m () -> ConduitT b c m r -> ConduitT a c m r
 fuse = (.|)
 
---- Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
----
---- Output from the upstream (left) conduit will be fed into the
---- downstream (right) conduit. Processing will terminate when
---- downstream (right) returns.
---- Leftover data returned from the right @Conduit@ will be discarded.
----
---- Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
---- be removed in a future version.
----
---- Note that, while this operator looks like categorical composition
---- (from "Control.Category"), there are a few reasons it's different:
----
---- * The position of the type parameters to 'ConduitT' do not
----   match. We would need to change @ConduitT i o m r@ to @ConduitT r
----   m i o@, which would preclude a 'Monad' or 'MonadTrans' instance.
----
---- * The result value from upstream and downstream are allowed to
----   differ between upstream and downstream. In other words, we would
----   need the type signature here to look like @ConduitT a b m r ->
----   ConduitT b c m r -> ConduitT a c m r@.
----
---- * Due to leftovers, we do not have a left identity in Conduit. This
----   can be achieved with the underlying @Pipe@ datatype, but this is
----   not generally recommended. See <https://stackoverflow.com/a/15263700>.
+{--
+   Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
+
+   Output from the upstream (left) conduit will be fed into the
+   downstream (right) conduit. Processing will terminate when
+   downstream (right) returns.
+   Leftover data returned from the right @Conduit@ will be discarded.
+
+   Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
+   be removed in a future version.
+
+   Note that, while this operator looks like categorical composition
+   (from "Control.Category"), there are a few reasons it's different:
+
+   * The position of the type parameters to 'ConduitT' do not
+     match. We would need to change @ConduitT i o m r@ to @ConduitT r
+     m i o@, which would preclude a 'Monad' or 'MonadTrans' instance.
+
+   * The result value from upstream and downstream are allowed to
+     differ between upstream and downstream. In other words, we would
+     need the type signature here to look like @ConduitT a b m r ->
+     ConduitT b c m r -> ConduitT a c m r@.
+
+   * Due to leftovers, we do not have a left identity in Conduit. This
+     can be achieved with the underlying @Pipe@ datatype, but this is
+     not generally recommended. See <https://stackoverflow.com/a/15263700>.
+ -}
 (.|) :: Monad m => ConduitT a b m ()
                 -> ConduitT b c m r
                 -> ConduitT a c m r
@@ -124,23 +136,27 @@ ConduitT left0 .| ConduitT right0 = ConduitT (\rest ->
      in goRight (left0 Done) (right0 Done)
     )
 
---- Fuse two @ConduitT@s together, and provide the return value of both. Note
---- that this will force the entire upstream @ConduitT@ to be run to produce the
---- result value, even if the downstream terminates early.
+{--
+   Fuse two @ConduitT@s together, and provide the return value of both. Note
+   that this will force the entire upstream @ConduitT@ to be run to produce the
+   result value, even if the downstream terminates early.
+ -}
 fuseBoth :: Monad m => ConduitT a b m r1 -> ConduitT b c m r2 -> ConduitT a c m (r1, r2)
 fuseBoth (ConduitT up) (ConduitT down) =
     ConduitT (pipeL (up Done) (withUpstream $ generalizeUpstream $ down Done) >>=)
 
---- Like 'fuseBoth', but does not force consumption of the @Producer@.
---- In the case that the @Producer@ terminates, the result value is
---- provided as a @Just@ value. If it does not terminate, then a
---- @Nothing@ value is returned.
----
---- One thing to note here is that "termination" here only occurs if the
---- @Producer@ actually yields a @Nothing@ value. For example, with the
---- @Producer@ @mapM_ yield [1..5]@, if five values are requested, the
---- @Producer@ has not yet terminated. Termination only occurs when the
---- sixth value is awaited for and the @Producer@ signals termination.
+{--
+   Like 'fuseBoth', but does not force consumption of the @Producer@.
+   In the case that the @Producer@ terminates, the result value is
+   provided as a @Just@ value. If it does not terminate, then a
+   @Nothing@ value is returned.
+
+   One thing to note here is that "termination" here only occurs if the
+   @Producer@ actually yields a @Nothing@ value. For example, with the
+   @Producer@ @mapM_ yield [1..5]@, if five values are requested, the
+   @Producer@ has not yet terminated. Termination only occurs when the
+   sixth value is awaited for and the @Producer@ signals termination.
+ -}
 fuseBothMaybe :: Monad m
               => ConduitT a b m r1
               -> ConduitT b c m r2
@@ -156,54 +172,66 @@ fuseBothMaybe (ConduitT up) (ConduitT down) =
         (\u -> go (Just u) (c ()))
     go mup (Leftover p i) = Leftover (go mup p) i
 
---- Same as @fuseBoth@, but ignore the return value from the downstream
---- @Conduit@. Same caveats of forced consumption apply.
+{--
+   Same as @fuseBoth@, but ignore the return value from the downstream
+   @Conduit@. Same caveats of forced consumption apply.
+ -}
 fuseUpstream :: Monad m => ConduitT a b m r -> ConduitT b c m () -> ConduitT a c m r
 fuseUpstream up down = fmap fst (fuseBoth up down)
 
---- Wait for a single input value from upstream. If no data is available,
---- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
---- also return @Nothing@.
+{--
+   Wait for a single input value from upstream. If no data is available,
+   returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
+   also return @Nothing@.
+ -}
 await :: Monad m => ConduitT i o m (Maybe i)
 await = ConduitT (\f -> NeedInput (f . Just) (const $ f Nothing))
 
---- Provide a single piece of leftover input to be consumed by the next
---- component in the current monadic binding.
----
---- /Note/: it is highly encouraged to only return leftover values from input
---- already consumed from upstream.
+{--
+   Provide a single piece of leftover input to be consumed by the next
+   component in the current monadic binding.
+
+   /Note/: it is highly encouraged to only return leftover values from input
+   already consumed from upstream.
+ -}
 leftover :: i -> ConduitT i o m ()
 leftover i = ConduitT (\rest -> Leftover (rest ()) i)
 
---- Send a value downstream to the next component to consume. If the
---- downstream component terminates, this call will never return control.
+{--
+   Send a value downstream to the next component to consume. If the
+   downstream component terminates, this call will never return control.
+ -}
 yield :: Monad m => o -> ConduitT i o m ()
 yield o = ConduitT (\rest -> HaveOutput (rest ()) o)
 
---- Wait for input forever, calling the given inner component for each piece of
---- new input.
----
---- This function is provided as a convenience for the common pattern of
---- @await@ing input, checking if it's @Just@ and then looping.
+{--
+   Wait for input forever, calling the given inner component for each piece of
+   new input.
+
+   This function is provided as a convenience for the common pattern of
+   @await@ing input, checking if it's @Just@ and then looping.
+ -}
 awaitForever :: Monad m => (i -> ConduitT i o m r) -> ConduitT i o m ()
 awaitForever f = ConduitT (\rest ->
   let go = NeedInput (\i -> unConduitT (f i) (const go)) rest
    in go)
 
---- Bracket a conduit computation between allocation and release of a
---- resource. Two guarantees are given about resource finalization:
----
---- 1. It will be /prompt/. The finalization will be run as early as possible.
----
---- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
---- be run in the event of any exceptions.
----
---- Parameters:
---- - computation to run first (\"acquire resource\")
---- - computation to run last (\"release resource\")
---- - computation to run in-between
---- Returns:
---- - returns the value from the in-between computation
+{--
+   Bracket a conduit computation between allocation and release of a
+   resource. Two guarantees are given about resource finalization:
+
+   1. It will be /prompt/. The finalization will be run as early as possible.
+
+   2. It is exception safe. Due to usage of @resourcet@, the finalization will
+   be run in the event of any exceptions.
+
+   Parameters:
+   - computation to run first (\"acquire resource\")
+   - computation to run last (\"release resource\")
+   - computation to run in-between
+   Returns:
+   - returns the value from the in-between computation
+ -}
 bracketP :: MonadResource m => IO a -> (a -> IO ()) -> (a -> ConduitT i o m r)
                             -> ConduitT i o m r
 bracketP alloc free inside = ConduitT (\rest -> do
@@ -214,18 +242,18 @@ bracketP alloc free inside = ConduitT (\rest -> do
   )
 
 {--
- - Catch all exceptions thrown by the current component of the pipeline.
- -
- - Note: this will /not/ catch exceptions thrown by other components! For
- - example, if an exception is thrown in a @Source@ feeding to a @Sink@, and
- - the @Sink@ uses @catchC@, the exception will /not/ be caught.
- -
- - Due to this behavior (as well as lack of async exception safety), you should
- - not try to implement combinators such as @onException@ in terms of this
- - primitive function.
- -
- - Note also that the exception handling will /not/ be applied to any finalizers
- - generated by this conduit.
+   Catch all exceptions thrown by the current component of the pipeline.
+
+   Note: this will /not/ catch exceptions thrown by other components! For
+   example, if an exception is thrown in a @Source@ feeding to a @Sink@, and
+   the @Sink@ uses @catchC@, the exception will /not/ be caught.
+
+   Due to this behavior (as well as lack of async exception safety), you should
+   not try to implement combinators such as @onException@ in terms of this
+   primitive function.
+
+   Note also that the exception handling will /not/ be applied to any finalizers
+   generated by this conduit.
  -}
 catchC :: (MonadUnliftIO m, Exceptional e)
        => ConduitT i o m r
@@ -247,19 +275,21 @@ handleC :: (MonadUnliftIO m, Exceptional e)
 handleC = flip catchC
 
 {--
- - A version of Haskell's @try@ for use within a pipeline. See the comments in
- - @catchC@ for more details.
+   A version of Haskell's @try@ for use within a pipeline. See the comments in
+   @catchC@ for more details.
  -}
 tryC :: (MonadUnliftIO m, Exceptional e)
      => ConduitT i o m r
      -> ConduitT i o m (Either e r)
 tryC c = fmap Right c `catchC` (return . Left)
 
---- Apply a function to all the output values of a @ConduitT@.
----
---- This mimics the behavior of `fmap` for a `Source` and `Conduit` in pre-0.4
---- days. It can also be simulated by fusing with the @map@ conduit from
---- "frege.data.conduit.Combinators".
+{--
+   Apply a function to all the output values of a @ConduitT@.
+
+   This mimics the behavior of `fmap` for a `Source` and `Conduit` in pre-0.4
+   days. It can also be simulated by fusing with the @map@ conduit from
+   "frege.data.conduit.Combinators".
+ -}
 mapOutput :: Monad m => (o1 -> o2) -> ConduitT i o1 m r -> ConduitT i o2 m r
 mapOutput f (ConduitT c0) = ConduitT (\rest -> let
     go (HaveOutput p o) = HaveOutput (go p) (f o)
@@ -269,10 +299,12 @@ mapOutput f (ConduitT c0) = ConduitT (\rest -> let
     go (Leftover p i) = Leftover (go p) i
     in go (c0 Done))
 
---- Combines two sinks. The new sink will complete when both input sinks have
---- completed.
----
---- Any leftovers are discarded.
+{--
+   Combines two sinks. The new sink will complete when both input sinks have
+   completed.
+
+   Any leftovers are discarded.
+ -}
 zipSinks :: Monad m => ConduitT i Void m r -> ConduitT i Void m r' -> ConduitT i Void m (r, r')
 zipSinks (ConduitT x0) (ConduitT y0) = ConduitT (\rest -> let
     Leftover _  i    >< _                = absurd i
@@ -289,8 +321,10 @@ zipSinks (ConduitT x0) (ConduitT y0) = ConduitT (\rest -> let
     _ >< _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
     in injectLeftovers (x0 Done) >< injectLeftovers (y0 Done))
 
---- Combines two sources. The new source will stop producing once either
---- source has been exhausted.
+{--
+   Combines two sources. The new source will stop producing once either
+   source has been exhausted.
+ -}
 zipSources :: Monad m => ConduitT () a m () -> ConduitT () b m () -> ConduitT () (a, b) m ()
 zipSources (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go (Leftover left ()) right = go left right
@@ -309,8 +343,10 @@ zipSources (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go _ _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
     in go (left0 Done) (right0 Done))
 
---- Combines two sources. The new source will stop producing once either
---- source has been exhausted.
+{--
+   Combines two sources. The new source will stop producing once either
+   source has been exhausted.
+ -}
 zipSourcesApp :: Monad m => ConduitT () (a -> b) m () -> ConduitT () a m () -> ConduitT () b m ()
 zipSourcesApp (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go (Leftover left ()) right = go left right
@@ -351,10 +387,12 @@ zipConduitApp (ConduitT left0) (ConduitT right0) = ConduitT (\rest -> let
     go _ _ = error "Never happens; The pattern is indeed exhaustive, but the compiler reports otherwise"
   in go (injectLeftovers $ left0 Done) (injectLeftovers $ right0 Done))
 
---- A wrapper for defining an 'Applicative' instance for 'Source's which allows
---- to combine sources together, generalizing 'zipSources'. A combined source
---- will take input yielded from each of its @Source@s until any of them stop
---- producing output.
+{--
+   A wrapper for defining an 'Applicative' instance for 'Source's which allows
+   to combine sources together, generalizing 'zipSources'. A combined source
+   will take input yielded from each of its @Source@s until any of them stop
+   producing output.
+ -}
 data ZipSource (m :: * -> *) o = ZipSource { get :: ConduitT () o m () }
 
 instance Monad m => Functor (ZipSource m) where
@@ -363,26 +401,28 @@ instance Monad m => Applicative (ZipSource m) where
     pure = ZipSource . forever . yield
     (ZipSource f) <*> (ZipSource x) = ZipSource $ zipSourcesApp f x
 
---- A wrapper for defining an 'Applicative' instance for 'Sink's which allows
---- to combine sinks together, generalizing 'zipSinks'. A combined sink
---- distributes the input to all its participants and when all finish, produces
---- the result. This allows to define functions like
----
---- @
---- sequenceSinks :: (Monad m)
----           => [Sink i m r] -> Sink i m [r]
---- sequenceSinks = getZipSink . sequenceA . fmap ZipSink
---- @
----
---- Note that the standard 'Applicative' instance for conduits works
---- differently. It feeds one sink with input until it finishes, then switches
---- to another, etc., and at the end combines their results.
----
---- This newtype is in fact a type constrained version of 'ZipConduit', and has
---- the same behavior. It's presented as a separate type since (1) it
---- historically predates @ZipConduit@, and (2) the type constraining can make
---- your code clearer (and thereby make your error messages more easily
---- understood).
+{--
+   A wrapper for defining an 'Applicative' instance for 'Sink's which allows
+   to combine sinks together, generalizing 'zipSinks'. A combined sink
+   distributes the input to all its participants and when all finish, produces
+   the result. This allows to define functions like
+
+   @
+   sequenceSinks :: (Monad m)
+             => [Sink i m r] -> Sink i m [r]
+   sequenceSinks = getZipSink . sequenceA . fmap ZipSink
+   @
+
+   Note that the standard 'Applicative' instance for conduits works
+   differently. It feeds one sink with input until it finishes, then switches
+   to another, etc., and at the end combines their results.
+
+   This newtype is in fact a type constrained version of 'ZipConduit', and has
+   the same behavior. It's presented as a separate type since (1) it
+   historically predates @ZipConduit@, and (2) the type constraining can make
+   your code clearer (and thereby make your error messages more easily
+   understood).
+ -}
 data ZipSink i (m :: * -> *) r = ZipSink { get :: ConduitT i Void m r }
 
 instance Monad m => Functor (ZipSink i m) where
@@ -392,25 +432,27 @@ instance Monad m => Applicative (ZipSink i m) where
     (ZipSink f) <*> (ZipSink x) =
         ZipSink $ liftM (uncurry ($)) $ zipSinks f x
 
---- Provides an alternative @Applicative@ instance for @ConduitT@. In this instance,
---- every incoming value is provided to all @ConduitT@s, and output is coalesced together.
---- Leftovers from individual @ConduitT@s will be used within that component, and then discarded
---- at the end of their computation. Output and finalizers will both be handled in a left-biased manner.
----
---- As an example, take the following program:
----
---- @
---- main :: IO ()
---- main = do
----     let src = mapM_ yield [1..3 :: Int]
----         conduit1 = CL.map (+1)
----         conduit2 = CL.concatMap (replicate 2)
----         conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
----         sink = CL.mapM_ print
----     src $$ conduit =$ sink
---- @
----
---- It will produce the output: 2, 1, 1, 3, 2, 2, 4, 3, 3
+{--
+   Provides an alternative @Applicative@ instance for @ConduitT@. In this instance,
+   every incoming value is provided to all @ConduitT@s, and output is coalesced together.
+   Leftovers from individual @ConduitT@s will be used within that component, and then discarded
+   at the end of their computation. Output and finalizers will both be handled in a left-biased manner.
+
+   As an example, take the following program:
+
+   @
+   main :: IO ()
+   main = do
+       let src = mapM_ yield [1..3 :: Int]
+           conduit1 = CL.map (+1)
+           conduit2 = CL.concatMap (replicate 2)
+           conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
+           sink = CL.mapM_ print
+       src $$ conduit =$ sink
+   @
+
+   It will produce the output: 2, 1, 1, 3, 2, 2, 4, 3, 3
+ -}
 data ZipConduit i o (m :: * -> *) r = ZipConduit { get :: ConduitT i o m r }
 
 --- Porting note: was @deriving Functor@

@@ -40,8 +40,10 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
---- This is similar to @await@, but will return the upstream result value as
---- @Left@ if available.
+{--
+   This is similar to @await@, but will return the upstream result value as
+   @Left@ if available.
+ -}
 awaitE :: Pipe l i o u m (Either u i)
 awaitE = NeedInput (Done . Right) (Done . Left)
 
@@ -78,12 +80,14 @@ runPipe (Done r) = return r
 runPipe (PipeM mp) = mp >>= runPipe
 runPipe (Leftover _ i) = absurd i
 
---- Transforms a @Pipe@ that provides leftovers to one which does not,
---- allowing it to be composed.
----
---- This function will provide any leftover values within this @Pipe@ to any
---- calls to @await@. If there are more leftover values than are demanded, the
---- remainder are discarded.
+{--
+   Transforms a @Pipe@ that provides leftovers to one which does not,
+   allowing it to be composed.
+
+   This function will provide any leftover values within this @Pipe@ to any
+   calls to @await@. If there are more leftover values than are demanded, the
+   remainder are discarded.
+ -}
 injectLeftovers :: Monad m => Pipe i i o u m r -> Pipe l i o u m r
 injectLeftovers =
     go []
@@ -95,8 +99,10 @@ injectLeftovers =
     go ls (PipeM mp) = PipeM (liftM (go ls) mp)
     go ls (Leftover p l) = go (l:ls) p
 
---- Returns a tuple of the upstream and downstream results. Note that this
---- will force consumption of the entire input stream.
+{--
+   Returns a tuple of the upstream and downstream results. Note that this
+   will force consumption of the entire input stream.
+ -}
 withUpstream :: Monad m => Pipe l i o u m r -> Pipe l i o u m (u, r)
 withUpstream down =
     down >>= go
