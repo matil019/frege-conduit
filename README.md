@@ -86,21 +86,21 @@ First checkout a release you wish to use (omit this if you are going to use a
 snapshot):
 
 ```
-$ git checkout 0.3.1
+$ git checkout 0.3.2
 ```
 
 Install `frege-conduit` into your local repository (again omit
 `'set version ...'` if you use a snapshot):
 
 ```
-$ sbt 'set version := "0.3.1"' publishLocal
+$ sbt 'set version := "0.3.2"' publishLocal
 ```
 
 Then, you can use `frege-conduit` in your library by adding this to your
 `build.sbt`:
 
 ```sbt
-libraryDependencies += "xyz.denshi_no_yamaoku" % "frege-conduit" % "0.3.1"
+libraryDependencies += "xyz.denshi_no_yamaoku" % "frege-conduit" % "0.3.2"
 ```
 
 [frege-official-release]: https://github.com/Frege/frege/releases
