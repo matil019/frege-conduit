@@ -29,26 +29,32 @@ instance Monoid ByteString where
   mempty = empty
   pure native mappend ByteString.mappend_ :: ByteString -> ByteString -> ByteString
 
---- Copies the content of the @ByteString@ to the native @byte[]@ so that
---- it can be used as mutable one.
+{--
+   Copies the content of the @ByteString@ to the native @byte[]@ so that
+   it can be used as mutable one.
+ -}
 native thaw ByteString.thaw_ :: ByteString -> STMutable s (JArray Byte)
 
 --- Copies the content of the mutable @byte[]@ to @ByteString@.
 native freeze ByteString.freeze_ :: Mutable s (JArray Byte) -> ST s ByteString
 
---- Wraps a native @byte[]@ into @ByteString@ without copying.
----
---- note: after applying this function, the wrapped array must *not* be modified!
+{--
+   Wraps a native @byte[]@ into @ByteString@ without copying.
+
+   note: after applying this function, the wrapped array must *not* be modified!
+ -}
 native unsafeFreeze ByteString.unsafeFreeze_ :: Mutable s (JArray Byte) -> ST s ByteString
 
---- Wraps a part of a native @byte[]@ into @ByteString@ without copying.
----
---- note: after applying this function, the wrapped array must *not* be modified!
----
---- Parameters:
---- - the array
---- - the offset
---- - the length
+{--
+   Wraps a part of a native @byte[]@ into @ByteString@ without copying.
+
+   note: after applying this function, the wrapped array must *not* be modified!
+
+   Parameters:
+   - the array
+   - the offset
+   - the length
+ -}
 native unsafeFreezeWith ByteString.unsafeFreezeWith_
   :: Mutable s (JArray Byte) -> Int -> Int -> ST s ByteString
 

@@ -1,16 +1,18 @@
---- A collection of provisional class-like data types.
----
---- The original library uses @MonoFoldable@, @IsSequence@, etc. from the
---- @mono-traversable@ package. It uses \"type family\" feature which is not
---- (yet) available in Frege.
----
---- Functions which expects such classes are instead inplemented as two
---- variations: one is @fooE@ that takes a list, and the other is @fooStr@
---- that takes a String.
----
---- This module contains a data types whose members have the same name as the
---- original type classes so that transition to them when become available is
---- easier.
+{--
+   A collection of provisional class-like data types.
+
+   The original library uses @MonoFoldable@, @IsSequence@, etc. from the
+   @mono-traversable@ package. It uses \"type family\" feature which is not
+   (yet) available in Frege.
+
+   Functions which expects such classes are instead inplemented as two
+   variations: one is @fooE@ that takes a list, and the other is @fooStr@
+   that takes a String.
+
+   This module contains a data types whose members have the same name as the
+   original type classes so that transition to them when become available is
+   easier.
+ -}
 module frege.data.conduit.internal.Sequence where
 
 import frege.Prelude hiding (all, any, elem, fold, notElem, splitAt)

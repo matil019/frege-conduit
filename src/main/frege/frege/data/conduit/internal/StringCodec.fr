@@ -15,8 +15,10 @@ pure native newString new :: JArray Byte -> Int -> Int -> Charset -> String
 encodeUtf8 :: String -> ByteString
 encodeUtf8 s = ST.run (BS.unsafeFreeze =<< getBytes s utf8)
 
---- Beware of cutoff; if the ByteString ends with an incomplete byte sequence,
---- the last character in the result String becomes U+FFFD (the replacement character).
+{--
+   Beware of cutoff; if the ByteString ends with an incomplete byte sequence,
+   the last character in the result String becomes U+FFFD (the replacement character).
+ -}
 decodeUtf8 :: ByteString -> String
 decodeUtf8 (ByteString{payload, offset, length}) =
     newString payload offset length utf8

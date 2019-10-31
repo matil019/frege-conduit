@@ -1,42 +1,48 @@
---- Ported from Haskell unliftio-core library
---- Copyright   :  (C) 2017 FP Complete
---- License     :  MIT
+{--
+   Ported from Haskell unliftio-core library
+   Copyright   :  (C) 2017 FP Complete
+   License     :  MIT
+ -}
 -- TODO split into subproject
 module frege.control.monad.io.Unlift where
 
 import frege.control.monad.trans.MonadIO (MonadIO)
 
---- The ability to run any monadic action @m a@ as @IO a@.
----
---- This is more precisely a natural transformation. We need to new
---- datatype (instead of simply using a @forall@) due to lack of
---- support in Frege for impredicative types.
+{--
+   The ability to run any monadic action @m a@ as @IO a@.
+
+   This is more precisely a natural transformation. We need to new
+   datatype (instead of simply using a @forall@) due to lack of
+   support in Frege for impredicative types.
+ -}
 newtype UnliftIO m = UnliftIO { run :: forall a. m a -> IO a }
 
---- Monads which allow their actions to be run in 'IO'.
----
---- While 'MonadIO' allows an 'IO' action to be lifted into another
---- monad, this class captures the opposite concept: allowing you to
---- capture the monadic context. Note that, in order to meet the laws
---- given below, the intuition is that a monad must have no monadic
---- state, but may have monadic context. This essentially limits
---- 'MonadUnliftIO' to 'ReaderT' and 'IdentityT' transformers on top of
---- 'IO'.
----
---- Laws. For any value @u@ returned by 'askUnliftIO', it must meet the
---- monad transformer laws as reformulated for @MonadUnliftIO@:
----
---- * @unliftIO u . return = return@
----
---- * @unliftIO u (m >>= f) = unliftIO u m >>= unliftIO u . f@
----
---- The third is a currently nameless law which ensures that the
---- current context is preserved.
----
---- * @askUnliftIO >>= (\u -> liftIO (unliftIO u m)) = m@
----
---- If you have a name for this, please submit it in a pull request for
---- great glory.
+{--
+   Monads which allow their actions to be run in 'IO'.
+
+   While 'MonadIO' allows an 'IO' action to be lifted into another
+   monad, this class captures the opposite concept: allowing you to
+   capture the monadic context. Note that, in order to meet the laws
+   given below, the intuition is that a monad must have no monadic
+   state, but may have monadic context. This essentially limits
+   'MonadUnliftIO' to 'ReaderT' and 'IdentityT' transformers on top of
+   'IO'.
+
+   Laws. For any value @u@ returned by 'askUnliftIO', it must meet the
+   monad transformer laws as reformulated for @MonadUnliftIO@:
+
+   - @unliftIO u . return = return@
+
+   - @unliftIO u (m >>= f) = unliftIO u m >>= unliftIO u . f@
+
+   The third is a currently nameless law which ensures that the
+   current context is preserved.
+
+   - @askUnliftIO >>= (\u -> liftIO (unliftIO u m)) = m@
+
+   If you have a name for this, please submit it in a pull request for
+   great glory.
+ -}
 class MonadIO m => MonadUnliftIO m where
   --- Capture the current monadic context, providing the ability to
   --- run monadic actions in 'IO'.
@@ -56,9 +62,9 @@ instance MonadUnliftIO IO where
   withRunInIO inner = inner id
 
 {--
- - Convenience function for capturing the monadic context and running an 'IO'
- - action. The 'UnliftIO' newtype wrapper is rarely needed, so prefer
- - 'withRunInIO' to this function.
+   Convenience function for capturing the monadic context and running an 'IO'
+   action. The 'UnliftIO' newtype wrapper is rarely needed, so prefer
+   'withRunInIO' to this function.
  -}
 withUnliftIO :: MonadUnliftIO m => (UnliftIO m -> IO a) -> m a
 withUnliftIO inner = do
