@@ -2,11 +2,11 @@
    Since some type classes don't exist in Frege yet, some functions have
    different types as follows:
 
-   * For chunked operations (@fooE@), specialized functions are provided.
+   - For chunked operations (@fooE@), specialized functions are provided.
      Some expects lists only, some can accept general @Foldable@s.
      Please consult type signature for each function.
-   * Also, String variants are added (@fooStr@ for each @fooE@)
-   * Moreover, @ByteString@ (immutable byte[]) variants are added (@fooBS@).
+   - Also, String variants are added (@fooStr@ for each @fooE@)
+   - Moreover, @ByteString@ (immutable byte[]) variants are added (@fooBS@).
  -}
 module frege.data.conduit.Combinators where
 

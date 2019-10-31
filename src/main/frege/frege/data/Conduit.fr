@@ -97,16 +97,16 @@ fuse = (.|)
    Note that, while this operator looks like categorical composition
    (from "Control.Category"), there are a few reasons it's different:
 
-   * The position of the type parameters to 'ConduitT' do not
+   - The position of the type parameters to 'ConduitT' do not
      match. We would need to change @ConduitT i o m r@ to @ConduitT r
      m i o@, which would preclude a 'Monad' or 'MonadTrans' instance.
 
-   * The result value from upstream and downstream are allowed to
+   - The result value from upstream and downstream are allowed to
      differ between upstream and downstream. In other words, we would
      need the type signature here to look like @ConduitT a b m r ->
      ConduitT b c m r -> ConduitT a c m r@.
 
-   * Due to leftovers, we do not have a left identity in Conduit. This
+   - Due to leftovers, we do not have a left identity in Conduit. This
      can be achieved with the underlying @Pipe@ datatype, but this is
      not generally recommended. See <https://stackoverflow.com/a/15263700>.
  -}
@@ -407,11 +407,9 @@ instance Monad m => Applicative (ZipSource m) where
    distributes the input to all its participants and when all finish, produces
    the result. This allows to define functions like
 
-   @
-   sequenceSinks :: (Monad m)
-             => [Sink i m r] -> Sink i m [r]
-   sequenceSinks = getZipSink . sequenceA . fmap ZipSink
-   @
+   > sequenceSinks :: (Monad m)
+   >           => [Sink i m r] -> Sink i m [r]
+   > sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 
    Note that the standard 'Applicative' instance for conduits works
    differently. It feeds one sink with input until it finishes, then switches
@@ -440,16 +438,14 @@ instance Monad m => Applicative (ZipSink i m) where
 
    As an example, take the following program:
 
-   @
-   main :: IO ()
-   main = do
-       let src = mapM_ yield [1..3 :: Int]
-           conduit1 = CL.map (+1)
-           conduit2 = CL.concatMap (replicate 2)
-           conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
-           sink = CL.mapM_ print
-       src $$ conduit =$ sink
-   @
+   > main :: IO ()
+   > main = do
+   >     let src = mapM_ yield [1..3 :: Int]
+   >         conduit1 = CL.map (+1)
+   >         conduit2 = CL.concatMap (replicate 2)
+   >         conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
+   >         sink = CL.mapM_ print
+   >     src $$ conduit =$ sink
 
    It will produce the output: 2, 1, 1, 3, 2, 2, 4, 3, 3
  -}
