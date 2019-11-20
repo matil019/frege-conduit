@@ -160,16 +160,13 @@ native module where {
     return TByteString.mk(arr, 0, TByteString.length(a) + TByteString.length(b));
   }
 
-  public static final TByteString packImpl_(PreludeBase.TList<Byte> l, final int len) {
+  public static final TByteString packImpl_(final PreludeBase.TList<Byte> l, final int len) {
     final byte[] arr = new byte[len];
     int idx = 0;
-    while (l.asCons() != null) {
-      final PreludeBase.TList.DCons<Byte> cons = l.asCons();
-      assert cons != null;
-      final byte head = cons.mem1.call();
-      arr[idx] = head;
-      idx++;
-      l = cons.mem2.call();
+    PreludeBase.TList.DCons<Byte> cons = l.asCons();
+    while (cons != null) {
+      arr[idx++] = cons.mem1.call();
+      cons = cons.mem2.call().asCons();
     }
     return TByteString.mk(arr, 0, len);
   }
