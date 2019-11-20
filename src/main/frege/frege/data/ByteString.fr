@@ -163,7 +163,7 @@ native module where {
   public static final TByteString packImpl_(PreludeBase.TList<Byte> l, final int len) {
     final byte[] arr = new byte[len];
     int idx = 0;
-    while (l.asList() != null) {
+    while (l.asCons() != null) {
       final PreludeBase.TList.DCons<Byte> cons = l.asCons();
       assert cons != null;
       final byte head = cons.mem1.call();
