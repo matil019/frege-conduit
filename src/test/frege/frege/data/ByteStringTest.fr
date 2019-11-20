@@ -1,0 +1,13 @@
+module frege.data.ByteStringTest where
+
+import frege.data.ByteString as BS ()
+import test.HspecLike (shouldBe)
+
+packTest :: IO ()
+packTest = do
+    let bytes = [65, 66, 67] -- "ABC"
+    (BS.unpack . BS.pack) bytes `shouldBe` bytes
+
+main :: IO ()
+main = do
+    packTest
