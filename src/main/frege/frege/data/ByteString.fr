@@ -108,7 +108,7 @@ tail x
   | otherwise = drop 1 x
 
 unpack :: ByteString -> [Byte]
-unpack x = map (x !!) [0..(length x)]
+unpack x = map (x !!) [0..(length x - 1)]
 
 native module where {
   public static final byte[] thaw_(final TByteString bs) {
