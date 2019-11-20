@@ -1,6 +1,6 @@
 module frege.control.monad.trans.ResourceTest where
 
-import frege.control.monad.trans.Resource (MonadResource, allocate, runResourceT)
+import frege.control.monad.trans.Resource (MonadResource, allocate, release, runResourceT)
 import test.HspecLike (shouldBe)
 
 data Action = Acquire Int | Release Int
@@ -24,6 +24,28 @@ orderedRelease = do
     -- xs should contain the reversed order of the performed actions
     xs `shouldBe` [Release 0, Release 1, Acquire 1, Acquire 0]
 
+--- Makes sure that resources are released once on exception.
+releaseOnceOnException :: IO ()
+releaseOnceOnException = do
+    counterRef <- Ref.new 0
+    void $ catchAll $ runResourceT $ do
+        _ <- allocate (pure ()) (\_ -> counterRef.modify (+1))
+        fail "exception!"
+    counter <- counterRef.get
+    counter `shouldBe` 1
+
+--- Makes sure a releasing action is run once if it is run early.
+releaseOnceEarly :: IO ()
+releaseOnceEarly = do
+    counterRef <- Ref.new 0
+    runResourceT $ do
+        (key, _) <- allocate (pure ()) (\_ -> counterRef.modify (+1))
+        release key
+    counter <- counterRef.get
+    counter `shouldBe` 1
+
 main :: IO ()
 main = do
     orderedRelease
+    releaseOnceOnException
+    releaseOnceEarly

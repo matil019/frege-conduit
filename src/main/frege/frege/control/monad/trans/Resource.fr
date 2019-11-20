@@ -145,7 +145,7 @@ private release' :: IORef ReleaseMap -> Int -> (Maybe (IO ()) -> IO a) -> IO a
 private release' istate key act = do
     rm <- istate.get
     let (rm', maction) = lookupAction rm
-    istate.put rm
+    istate.put rm'
     act maction
   where
     lookupAction (rm@(ReleaseMap next rf m)) =
