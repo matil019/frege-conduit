@@ -22,48 +22,7 @@ for usage.
 
 ## How to build
 
-This library is configured to depend on [frege-3.25.42][frege-official-release].
-Unfortunately, the artifact is not published to public repositories such as
-Maven Central. Thus, you have to manually install one into your local
-repository.
-
-If you are using Linux and SBT, create a temporary directory first and download
-the release:
-
-```
-$ mkdir ~/tmp
-$ cd    ~/tmp
-$ curl -LO https://github.com/Frege/frege/releases/download/3.25alpha/frege3.25.42.jar
-```
-
-Then, initialize a temporary SBT project by creating `build.sbt` with the
-following content:
-
-```build.sbt
-// https://stackoverflow.com/a/26532219/5118228
-// run "sbt publishLocal" to install into ~/.ivy2/local
-organization := "org.frege-lang"
-name := "frege"
-version := "3.25.42"
-autoScalaLibrary := false
-crossPaths := false
-packageBin in Compile := file("frege3.25.42.jar")
-```
-
-And `project/build.properties`:
-
-```project/build.properties
-sbt.version=1.2.1
-```
-
-When done, install the jar into `~/.ivy/local`:
-
-```
-$ sbt publishLocal
-```
-
-Once finished, remove the temporary directory (if desired) and go back to the
-`frege-conduit` directory, and run:
+Go to the `frege-conduit` directory, and run:
 
 ```
 $ sbt compile

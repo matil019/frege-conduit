@@ -1,1 +1,1 @@
-addSbtPlugin("com.earldouglas" % "sbt-frege" % "3.0.1")
+addSbtPlugin("com.earldouglas" % "sbt-frege" % "3.0.2")
